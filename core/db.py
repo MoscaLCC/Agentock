@@ -43,24 +43,80 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+SCHEMA_EXTRA = """
+CREATE TABLE IF NOT EXISTS ipo_ratings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL, run_id TEXT, name TEXT NOT NULL, symbol TEXT, exchange TEXT, ipo_date TEXT,
+    rating INTEGER NOT NULL, confidence REAL, price_range TEXT, ipo_price REAL, payload TEXT,
+    ret_day1 REAL, ret_day30 REAL, ret_day180 REAL, evaluated_at TEXT
+);
+CREATE TABLE IF NOT EXISTS seen (
+    key TEXT PRIMARY KEY, kind TEXT, ts TEXT, payload TEXT
+);
+CREATE TABLE IF NOT EXISTS universe_progress (
+    batch_id TEXT, ticker TEXT, status TEXT, run_id TEXT, ts TEXT, PRIMARY KEY (batch_id, ticker)
+);
+"""
+
+# colunas acrescentadas depois da criação inicial (migração automática)
+MIGRATIONS = {
+    "runs": {"version": "TEXT", "market": "TEXT", "currency": "TEXT", "run_id": "TEXT", "bench_symbol": "TEXT",
+             "bench_1d": "REAL", "bench_7d": "REAL", "bench_30d": "REAL", "evaluated_at": "TEXT"},
+}
+
+
+def _migrate(conn) -> None:
+    for table, cols in MIGRATIONS.items():
+        existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for col, typ in cols.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+    conn.commit()
+
+
 def connect(path: str | Path | None = None) -> sqlite3.Connection:
     p = str(path or DB_PATH)
     if p != ":memory:":
         Path(p).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(p)
     conn.row_factory = sqlite3.Row
-    conn.executescript(SCHEMA)
+    conn.executescript(SCHEMA + SCHEMA_EXTRA)
+    _migrate(conn)
     return conn
 
 
-def save_run(conn, *, ticker, rating: int, confidence, price, reasons, payload) -> int:
+def save_run(conn, *, ticker, rating: int, confidence, price, reasons, payload, version: str = "v1",
+             market: str | None = None, currency: str | None = None, run_id: str | None = None) -> int:
     cur = conn.execute(
-        "INSERT INTO runs(ticker, ts, rating, confidence, price, reasons, payload) VALUES (?,?,?,?,?,?,?)",
-        (ticker, now(), int(rating), confidence, price,
-         json.dumps(reasons, ensure_ascii=False), json.dumps(payload, ensure_ascii=False)),
+        "INSERT INTO runs(ticker, ts, rating, confidence, price, reasons, payload, version, market, currency, run_id)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (ticker, now(), int(rating), confidence, price, json.dumps(reasons, ensure_ascii=False),
+         json.dumps(payload, ensure_ascii=False, default=str), version, market, currency, run_id),
     )
     conn.commit()
     return cur.lastrowid
+
+
+def save_ipo_rating(conn, *, name, symbol, exchange, ipo_date, rating: int, confidence, price_range, payload,
+                    run_id=None) -> int:
+    cur = conn.execute(
+        "INSERT INTO ipo_ratings(ts, run_id, name, symbol, exchange, ipo_date, rating, confidence, price_range, payload)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (now(), run_id, name, symbol, exchange, ipo_date, int(rating), confidence, price_range,
+         json.dumps(payload, ensure_ascii=False, default=str)),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def was_seen(conn, key: str) -> bool:
+    return conn.execute("SELECT 1 FROM seen WHERE key=?", (key,)).fetchone() is not None
+
+
+def mark_seen(conn, key: str, kind: str, payload=None) -> None:
+    conn.execute("INSERT OR IGNORE INTO seen VALUES (?,?,?,?)",
+                 (key, kind, now(), json.dumps(payload, ensure_ascii=False, default=str)))
+    conn.commit()
 
 
 def save_agent_output(conn, *, run_id, node, agent, ticker, status, cached, output, error, cost_usd,

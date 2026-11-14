@@ -7,6 +7,10 @@ Campos do agent.yaml:
   tools, bash, mcp_servers, market_tools (tools do router expostas ao LLM)
   hooks (nomes ou {name, ...}), subagents ({nome: {description, prompt (ficheiro), tools, model}})
   cache_ttl (segundos; 0 = sem cache), cache_key (inputs que definem a chave; omisso = todos)
+  defaults (valores por omissão dos inputs)
+  file_inputs (inputs também gravados em data/runs/<run_id>/<agente>/<nome>.json → variável $<nome>_file;
+               a pasta fica acessível ao agente e aos subagentes)
+  mcp_servers.<nome>.requires_env: o MCP só fica ativo se essas variáveis existirem
 
 Herança: o filho sobrepõe-se ao pai campo a campo; ficheiros (prompt.md, task.md, schema, subagentes)
 procuram-se primeiro na pasta do filho e depois nas dos antepassados.
@@ -44,6 +48,8 @@ class AgentSpec:
     subagents: dict = field(default_factory=dict)
     cache_ttl: int = 0
     cache_key: list[str] | None = None
+    defaults: dict = field(default_factory=dict)
+    file_inputs: list[str] = field(default_factory=list)
     output_model: type[BaseModel] | None = None
     prompt_tpl: Template | None = None
     task_tpl: Template | None = None
@@ -76,6 +82,16 @@ class AgentSpec:
         if p is None:
             raise FileNotFoundError(f"{self.name}: {rel} não encontrado em {[str(d) for d in self.dirs]}")
         return p.read_text(encoding="utf-8")
+
+
+def _active_mcp(servers: dict) -> dict:
+    """MCPs com `requires_env: [VAR]` só ficam ativos se todas as variáveis existirem."""
+    out = {}
+    for name, cfg in (servers or {}).items():
+        cfg = dict(cfg)
+        if all(os.environ.get(v) for v in cfg.pop("requires_env", [])):
+            out[name] = cfg
+    return out
 
 
 def _expand_env(obj):
@@ -119,9 +135,10 @@ def load_agent(name: str, agents_dir: Path | None = None) -> AgentSpec:
         description=cfg.get("description", ""), model=cfg.get("model"), effort=cfg.get("effort"),
         max_turns=cfg.get("max_turns", 20), max_budget_usd=cfg.get("max_budget_usd"),
         inputs=cfg.get("inputs", []) or [], tools=cfg.get("tools", []) or [], bash=cfg.get("bash", []) or [],
-        mcp_servers=_expand_env(cfg.get("mcp_servers") or {}), market_tools=cfg.get("market_tools", []) or [],
+        mcp_servers=_expand_env(_active_mcp(cfg.get("mcp_servers"))), market_tools=cfg.get("market_tools", []) or [],
         hooks=cfg.get("hooks", []) or [], subagents=cfg.get("subagents") or {},
-        cache_ttl=int(cfg.get("cache_ttl", 0) or 0), cache_key=cfg.get("cache_key"), raw=cfg,
+        cache_ttl=int(cfg.get("cache_ttl", 0) or 0), cache_key=cfg.get("cache_key"),
+        defaults=cfg.get("defaults") or {}, file_inputs=cfg.get("file_inputs") or [], raw=cfg,
     )
     if cfg.get("output"):
         file, cls = cfg["output"].split(":")

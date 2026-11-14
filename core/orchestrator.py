@@ -39,11 +39,21 @@ class RunReport:
         return sum(r.cost_usd or 0 for r in self.results.values())
 
 
-def load_flow(flow: str | dict, path: Path | None = None) -> dict[str, Node]:
+def _flow_spec(flow: str | dict, path: Path | None = None) -> dict:
     spec = flow if isinstance(flow, dict) else \
         yaml.safe_load((path or FLOW_FILE).read_text(encoding="utf-8"))["flows"][flow]
+    return spec if "nodes" in spec else {"defaults": {}, "nodes": spec}
+
+
+def flow_defaults(flow: str | dict, path: Path | None = None) -> dict:
+    return dict(_flow_spec(flow, path).get("defaults") or {})
+
+
+def load_flow(flow: str | dict, path: Path | None = None) -> dict[str, Node]:
+    """Aceita {nó: {...}} ou {defaults: {...}, nodes: {nó: {...}}}."""
+    nodes = _flow_spec(flow, path)["nodes"]
     return {n: Node(name=n, agent=d["agent"], inputs=d.get("inputs") or {}, timeout=d.get("timeout", 900),
-                    after=d.get("after") or []) for n, d in spec.items()}
+                    after=d.get("after") or []) for n, d in nodes.items()}
 
 
 def _refs(value) -> set[str]:
@@ -104,22 +114,25 @@ def resolve(value, params: dict, results: dict[str, AgentResult]):
 async def run_flow(flow: str | dict, params: dict, *, only: str | None = None, use_cache: bool = True,
                    conn=None, agents_dir: Path | None = None, run_id: str | None = None) -> RunReport:
     nodes = load_flow(flow)
+    params = {**flow_defaults(flow), **{k: v for k, v in params.items() if v is not None}}
     plan = [[only]] if only else layers(nodes)
     if only and only not in nodes:
         raise ValueError(f"nó desconhecido: {only}")
     conn = conn or db.connect()
     run_id = run_id or new_run_id(params.get("ticker"))
+    params["run_id"] = run_id  # disponível nos fluxos como $run_id
     results: dict[str, AgentResult] = {}
 
     async def one(name: str) -> AgentResult:
         node = nodes[name]
+        agent = resolve(node.agent, params, results)  # permite `agent: $rating_agent`
         inputs = resolve(node.inputs, params, results)
         try:
             return await asyncio.wait_for(
-                run_agent(node.agent, run_id=run_id, node=name, use_cache=use_cache, conn=conn,
-                          agents_dir=agents_dir, **inputs), node.timeout)
+                run_agent(agent, inputs, run_id=run_id, node=name, use_cache=use_cache, conn=conn,
+                          agents_dir=agents_dir), node.timeout)
         except asyncio.TimeoutError:
-            res = AgentResult(node.agent, "failed", error=f"timeout ({node.timeout}s)", duration_ms=node.timeout * 1000)
+            res = AgentResult(agent, "failed", error=f"timeout ({node.timeout}s)", duration_ms=node.timeout * 1000)
             persist(conn, run_id, name, params.get("ticker"), res)
             return res
 

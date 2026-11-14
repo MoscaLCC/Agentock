@@ -38,7 +38,7 @@ class EngineTests(unittest.TestCase):
         # agentes script para o orquestrador
         write(self.dir, "double/agent.yaml", "name: double\nkind: script\ninputs: [n]\ncache_ttl: 600\n")
         write(self.dir, "double/run.py", "def run(n):\n    return {'value': n * 2}\n")
-        write(self.dir, "add/agent.yaml", "name: add\nkind: script\ninputs: [a, b]\n")
+        write(self.dir, "add/agent.yaml", "name: add\nkind: script\ninputs: [b]\ndefaults: {a: null}\n")
         write(self.dir, "add/run.py", "def run(a, b):\n    return {'value': (a or 0) + (b or 0)}\n")
         write(self.dir, "boom/agent.yaml", "name: boom\nkind: script\n")
         write(self.dir, "boom/run.py", "def run():\n    raise ValueError('falhou de propósito')\n")
@@ -96,7 +96,17 @@ class EngineTests(unittest.TestCase):
                          "after": {"agent": "add", "inputs": {"a": "$boom.value", "b": 1}}}, {})
         self.assertEqual(rep.results["boom"].status, "failed")
         self.assertIn("falhou de propósito", rep.results["boom"].error)
-        self.assertEqual(rep.results["after"].output, {"value": 1})
+        self.assertEqual(rep.results["after"].output, {"value": 1})  # input opcional: continua
+
+    def test_skipped_when_required_input_missing(self):
+        rep = self.flow({"boom": {"agent": "boom"}, "dbl": {"agent": "double", "inputs": {"n": "$boom.value"}}}, {})
+        self.assertEqual(rep.results["dbl"].status, "skipped")
+
+    def test_flow_defaults_and_agent_param(self):
+        spec = {"defaults": {"n": 2, "which": "double"},
+                "nodes": {"a": {"agent": "$which", "inputs": {"n": "$n"}}}}
+        self.assertEqual(self.flow(spec, {}).results["a"].output, {"value": 4})
+        self.assertEqual(self.flow(spec, {"n": 5}, use_cache=False).results["a"].output, {"value": 10})
 
     def test_timeout(self):
         rep = self.flow({"slow": {"agent": "slow", "timeout": 0.2}}, {})

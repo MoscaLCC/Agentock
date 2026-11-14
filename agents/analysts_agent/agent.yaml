@@ -1,0 +1,6 @@
+name: analysts_agent
+kind: script
+description: 2.16 — consenso dos analistas, tendência do consenso e alterações recentes por casa (EUA).
+inputs: [profile]
+cache_ttl: 21600
+cache_key: [profile.symbol]

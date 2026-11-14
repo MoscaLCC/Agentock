@@ -1,0 +1,4 @@
+name: us_lead_agent
+extends: _shared/lead_base
+description: 2.6 — o que os EUA (ADR, futuros ES/NQ, índices) fizeram depois do fecho da bolsa da ação (sinal para a Europa e a Ásia).
+defaults: {group: us}

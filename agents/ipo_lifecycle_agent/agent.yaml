@@ -1,0 +1,7 @@
+name: ipo_lifecycle_agent
+kind: script
+description: I.3 — para ações cotadas há menos de 1 ano, datas pós-IPO (estreia, fim do período de silêncio, lock-up do prospeto, 1 ano), overhang do lock-up e alerta a 7 dias.
+inputs: [profile]
+defaults: {notify: true}
+cache_ttl: 43200
+cache_key: [profile.symbol]

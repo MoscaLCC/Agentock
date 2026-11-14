@@ -14,6 +14,8 @@ providers:
   alphavantage: {env: [ALPHAVANTAGE_API_KEY], limits: {per_minute: 4, per_day: 23}}
   marketstack:  {env: [MARKETSTACK_API_KEY], limits: {per_month: 90}}
   akshare:      {limits: {per_minute: 2}}
+  sec:          {env: [SEC_USER_AGENT], limits: {per_minute: 300}}
+  dart:         {env: [DART_API_KEY], limits: {per_day: 9000}}
 
 # Ordem = prioridade. Para capacidades em "merge", todos os fornecedores da lista contribuem.
 routes:
@@ -59,6 +61,28 @@ routes:
     default: [twelvedata, yfinance]
   ipo_calendar:
     default: [finnhub, alphavantage]
+  financials:
+    default: [yfinance]
+  scores:
+    US: [fmp]
+    default: []
+  dcf:
+    US: [fmp]
+    default: []
+  insider:
+    US: [finnhub]
+    default: []
+  filings:
+    US: [sec]
+    KR: [dart]
+    default: []
+  subsidiaries:
+    US: [sec]
+    default: []
+  sec_search:
+    default: [sec]
+  lockup:
+    default: [sec]
 
 merge: [news, ipo_calendar]
 
@@ -77,6 +101,14 @@ ttl:
   search: 604800
   fx: 3600
   ipo_calendar: 43200
+  financials: 86400
+  scores: 86400
+  dcf: 86400
+  insider: 86400
+  filings: 21600
+  subsidiaries: 2592000
+  sec_search: 43200
+  lockup: 2592000
 
 # Quanto tempo um fornecedor fica "bloqueado" para um símbolo/capacidade depois de 401/402/403
 blocked_days: 7

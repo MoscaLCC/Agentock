@@ -28,6 +28,16 @@ SPECS = {
     "search": ("Procura cotações por nome (deteta ADR, A/H, GDR).", {"query": {"type": "string"}}),
     "fx": ("Taxa de câmbio, ex.: USD/KRW.", {"pair": {"type": "string"}}),
     "ipo_calendar": ("IPOs previstos nos próximos N dias.", {"days": {"type": "integer", "default": 30}}),
+    "financials": ("Demonstrações financeiras anuais (receita, margens, dívida, cash flow) + rácios de valorização.",
+                   {"symbol": SYM}),
+    "scores": ("Altman Z e Piotroski (só EUA).", {"symbol": SYM}),
+    "dcf": ("Valor DCF calculado pelo FMP (só EUA).", {"symbol": SYM}),
+    "insider": ("Sentimento de insiders (só EUA): MSPR mensal e variação líquida.", {"symbol": SYM}),
+    "filings": ("Documentos oficiais recentes: SEC (EUA/ADRs) ou DART (Coreia), com URL.",
+                {"symbol": SYM, "forms": {"type": "string", "default": "", "description": "ex.: 10-K,8-K (só SEC)"}}),
+    "subsidiaries": ("Subsidiárias oficiais: Exhibit 21 do 10-K ou Exhibit 8 do 20-F (EUA/ADRs).", {"symbol": SYM}),
+    "sec_search": ("Pesquisa de prospetos (S-1/F-1/424B4) no EDGAR pelo nome da empresa.",
+                   {"query": {"type": "string"}}),
 }
 
 

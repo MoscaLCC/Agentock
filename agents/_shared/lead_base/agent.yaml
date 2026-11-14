@@ -1,0 +1,7 @@
+name: lead_base
+kind: script
+description: Base dos sinais entre sessões (core/sessions.py). Os agentes asia/europe/us_lead definem o grupo.
+inputs: [profile]
+defaults: {group: asia}
+cache_ttl: 900
+cache_key: [profile.symbol, group]

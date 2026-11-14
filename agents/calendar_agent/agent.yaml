@@ -1,0 +1,7 @@
+name: calendar_agent
+kind: script
+description: 2.14 — calendário de eventos (resultados, dividendos) + eventos pós-IPO do ipo_lifecycle_agent.
+inputs: [profile]
+defaults: {lifecycle: null}
+cache_ttl: 21600
+cache_key: [profile.symbol, lifecycle]

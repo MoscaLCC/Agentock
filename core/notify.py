@@ -37,16 +37,27 @@ def default_notifier() -> Notifier:
     return TelegramNotifier(token, chat) if token and chat else ConsoleNotifier()
 
 
-def format_change(c: Change, price=None, confidence=None, reasons=None) -> str:
+DISCLAIMER = "Análise automática do Agentock — não é aconselhamento financeiro."
+
+
+def format_change(c: Change, price=None, confidence=None, reasons=None, diff: dict | None = None,
+                  version: str | None = None, currency: str | None = None, warnings: list | None = None) -> str:
     arrow = "SUBIU" if c.delta > 0 else "DESCEU"
-    lines = [f"{c.ticker}: {c.old.label} -> {c.new.label} ({arrow} {abs(c.delta)} nivel(is))"]
+    lines = [f"{c.ticker}: {c.old.label} -> {c.new.label} ({arrow} {abs(c.delta)} nível(is))"]
     if price is not None:
-        lines.append(f"Preço: {price}")
+        lines.append(f"Preço: {price:,.2f} {currency or ''}".rstrip())
     if confidence is not None:
-        lines.append(f"Confiança: {confidence:.0%}")
+        lines.append(f"Confiança: {confidence:.0%}" + (f" · classificação {version}" if version else ""))
     if c.kind == "confirmed":
         lines.append("(mudança confirmada em execuções consecutivas)")
     if reasons:
         lines.append("Razões:")
         lines += [f"- {r}" for r in reasons]
+    if diff and (diff.get("added") or diff.get("removed")):
+        lines.append("O que mudou face à classificação anterior:")
+        lines += [f"+ {r}" for r in diff.get("added", [])]
+        lines += [f"− {r}" for r in diff.get("removed", [])]
+    if warnings:
+        lines.append("Avisos: " + "; ".join(warnings))
+    lines.append(DISCLAIMER)
     return "\n".join(lines)

@@ -1,0 +1,6 @@
+name: technical_indicators_agent
+kind: script
+description: 2.8a — indicadores técnicos calculados por código (pandas-ta-classic) sobre preços diários.
+inputs: [profile]
+cache_ttl: 3600
+cache_key: [profile.symbol]

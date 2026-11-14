@@ -1,0 +1,4 @@
+name: asia_lead_agent
+extends: _shared/lead_base
+description: 2.5a — o que a sessão asiática (Tóquio, Seul, Hong Kong, Xangai) fez depois do fecho da bolsa da ação.
+defaults: {group: asia}

@@ -1,0 +1,6 @@
+name: ipo_calendar_agent
+kind: script
+description: I.1 — IPOs dos próximos N dias (Finnhub + Alpha Vantage, + web fora dos EUA quando fornecido), sem SPACs, acima de um limiar de dimensão; alerta Telegram de IPOs novos.
+inputs: []
+defaults: {days: 30, min_value_usd: 500000000, include_spacs: false, notify: true, web: null}
+cache_ttl: 0

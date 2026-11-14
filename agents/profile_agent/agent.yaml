@@ -1,0 +1,6 @@
+name: profile_agent
+kind: script
+description: 0.2 — resolve o ticker (aceita nome ou código), perfil, cotação, outras cotações, dados de IPO e índice de referência.
+inputs: [ticker]
+output: schema.py:Profile
+cache_ttl: 0          # a cotação tem de ser fresca; o perfil estático já fica em cache no router (7 dias)

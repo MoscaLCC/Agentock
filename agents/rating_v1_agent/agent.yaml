@@ -1,0 +1,3 @@
+name: rating_v1_agent
+extends: _shared/rating_base
+description: 2.19 v1 — classificação por um só LLM com rubrica (linha de base para a avaliação da Fase 7).

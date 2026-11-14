@@ -1,12 +1,58 @@
 from datetime import date, timedelta
 
-from .base import Provider, bars_from_df, now_iso, num, pct
+from .base import Provider, bars_from_df, now_iso, num, pct, unix_to_iso
 
 
 class YFinance(Provider):
     name = "yfinance"
     capabilities = frozenset({"quote", "eod", "intraday", "profile", "news", "analyst_recs", "price_targets",
-                              "upgrades", "calendar", "search", "fx"})
+                              "upgrades", "calendar", "search", "fx", "financials"})
+
+    ROWS = {  # campo normalizado -> nomes possíveis no yfinance (verificados na Fase 1)
+        "income": {"revenue": ["Total Revenue", "Operating Revenue"], "gross_profit": ["Gross Profit"],
+                   "operating_income": ["Operating Income", "Total Operating Income As Reported"],
+                   "net_income": ["Net Income", "Net Income Common Stockholders"], "ebit": ["EBIT"],
+                   "ebitda": ["EBITDA", "Normalized EBITDA"], "eps_diluted": ["Diluted EPS"],
+                   "interest_expense": ["Interest Expense"]},
+        "balance": {"total_assets": ["Total Assets"], "total_liabilities": ["Total Liabilities Net Minority Interest"],
+                    "current_assets": ["Current Assets"], "current_liabilities": ["Current Liabilities"],
+                    "long_term_debt": ["Long Term Debt"], "total_debt": ["Total Debt"],
+                    "cash": ["Cash And Cash Equivalents", "Cash Cash Equivalents And Short Term Investments"],
+                    "equity": ["Stockholders Equity", "Common Stock Equity"], "retained_earnings": ["Retained Earnings"],
+                    "shares": ["Ordinary Shares Number", "Share Issued"], "working_capital": ["Working Capital"]},
+        "cashflow": {"operating_cash_flow": ["Operating Cash Flow"], "capex": ["Capital Expenditure"],
+                     "free_cash_flow": ["Free Cash Flow"], "dividends_paid": ["Cash Dividends Paid"],
+                     "buybacks": ["Repurchase Of Capital Stock"]},
+    }
+    INFO = {"trailing_pe": "trailingPE", "forward_pe": "forwardPE", "price_to_book": "priceToBook",
+            "ev_to_ebitda": "enterpriseToEbitda", "profit_margin": "profitMargins", "gross_margin": "grossMargins",
+            "operating_margin": "operatingMargins", "roe": "returnOnEquity", "debt_to_equity": "debtToEquity",
+            "beta": "beta", "dividend_yield_pct": "dividendYield", "enterprise_value": "enterpriseValue",
+            "market_cap": "marketCap", "revenue_growth": "revenueGrowth", "earnings_growth": "earningsGrowth",
+            "trailing_eps": "trailingEps", "forward_eps": "forwardEps"}
+
+    def financials(self, s, years: int = 4):
+        """Demonstrações anuais (mais recente primeiro) + rácios do info. Valores na moeda de reporte."""
+        t = self._t(s)
+        frames = {"income": t.income_stmt, "balance": t.balance_sheet, "cashflow": t.cashflow}
+        inc = frames["income"]
+        if inc is None or inc.empty:
+            return None
+        yrs = [c.year for c in list(inc.columns)[:years]]
+        out = {"fiscal_years": yrs}
+        for stmt, fields in self.ROWS.items():
+            df = frames[stmt]
+            by_year = {c.year: c for c in df.columns} if df is not None and not df.empty else {}
+            block = {}
+            for field_name, names in fields.items():
+                row = next((n for n in names if df is not None and n in df.index), None)
+                block[field_name] = [num(df.at[row, by_year[y]]) if row and y in by_year else None for y in yrs]
+            out[stmt] = block
+        info = t.info or {}
+        out["ratios"] = {k: num(info.get(v)) for k, v in self.INFO.items()}
+        out["shares"] = {"outstanding": num(info.get("sharesOutstanding")), "float": num(info.get("floatShares"))}
+        out["currency"] = info.get("financialCurrency") or info.get("currency")
+        return out
 
     @staticmethod
     def _t(symbol):
@@ -35,9 +81,13 @@ class YFinance(Provider):
         name = info.get("longName") or info.get("shortName")
         if not name:
             return None
+        ftd = info.get("firstTradeDateMilliseconds")
         return {"name": name, "exchange": fi["exchange"], "currency": fi["currency"],
                 "sector": info.get("sector"), "industry": info.get("industry"), "country": info.get("country"),
-                "market_cap": num(fi["marketCap"])}
+                "market_cap": num(fi["marketCap"]), "quote_type": info.get("quoteType"),
+                "first_trade_date": unix_to_iso(ftd, ms=True)[:10] if ftd else None,
+                "shares_outstanding": num(info.get("sharesOutstanding")), "float_shares": num(info.get("floatShares")),
+                "summary": (info.get("longBusinessSummary") or "")[:600] or None}
 
     def news(self, s, limit: int = 20):
         out = []
@@ -54,10 +104,11 @@ class YFinance(Provider):
         df = self._t(s).recommendations
         if df is None or df.empty:
             return None
-        cur = df[df["period"] == "0m"]
-        r = (cur if not cur.empty else df).iloc[0]
-        return {"period": r["period"], "strong_buy": int(r["strongBuy"]), "buy": int(r["buy"]),
-                "hold": int(r["hold"]), "sell": int(r["sell"]), "strong_sell": int(r["strongSell"])}
+        rows = [{"period": r["period"], "strong_buy": int(r["strongBuy"]), "buy": int(r["buy"]),
+                 "hold": int(r["hold"]), "sell": int(r["sell"]), "strong_sell": int(r["strongSell"])}
+                for _, r in df.iterrows()]
+        cur = next((r for r in rows if r["period"] == "0m"), rows[0])
+        return {**cur, "history": rows}
 
     def price_targets(self, s):
         d = self._t(s).analyst_price_targets or {}

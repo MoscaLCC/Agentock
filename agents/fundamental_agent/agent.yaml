@@ -1,0 +1,11 @@
+name: fundamental_agent
+description: 2.9 — leitura fundamental (valorização, qualidade, crescimento, risco de balanço) a partir dos dados calculados.
+model: claude-sonnet-5-5
+max_turns: 6
+max_budget_usd: 0.5
+inputs: [profile, data]
+defaults: {health: null}
+tools: [Skill]
+output: schema.py:FundamentalView
+cache_ttl: 43200
+cache_key: [profile.symbol, data.fiscal_years, data.vs_peers]

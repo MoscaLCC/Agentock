@@ -16,7 +16,7 @@ def _qs(**q) -> str:
 
 class FMP(Provider):
     name, env = "fmp", ("FMP_API_KEY",)
-    capabilities = frozenset({"quote", "profile", "eod", "price_targets", "upgrades", "peers"})
+    capabilities = frozenset({"quote", "profile", "eod", "price_targets", "upgrades", "peers", "scores", "dcf"})
     BASE = "https://financialmodelingprep.com/stable/"
 
     def _get(self, path, **q):
@@ -32,7 +32,17 @@ class FMP(Provider):
         d = (self._get("profile", symbol=s) or [None])[0]
         return d and {"name": d.get("companyName"), "exchange": d.get("exchange"), "currency": d.get("currency"),
                       "sector": d.get("sector"), "industry": d.get("industry"), "country": d.get("country"),
-                      "market_cap": num(d.get("marketCap"))}
+                      "market_cap": num(d.get("marketCap")), "quote_type": "EQUITY",
+                      "first_trade_date": d.get("ipoDate"), "shares_outstanding": None, "float_shares": None,
+                      "summary": (d.get("description") or "")[:600] or None}
+
+    def scores(self, s):
+        d = (self._get("financial-scores", symbol=s) or [None])[0]
+        return d and {"altman_z": num(d.get("altmanZScore")), "piotroski": num(d.get("piotroskiScore"))}
+
+    def dcf(self, s):
+        d = (self._get("discounted-cash-flow", symbol=s) or [None])[0]
+        return d and {"dcf": num(d.get("dcf")), "price": num(d.get("Stock Price")), "date": d.get("date")}
 
     def eod(self, s, days: int = 365):
         d = self._get("historical-price-eod/full", symbol=s, **{"from": days_ago(days)})
@@ -55,7 +65,7 @@ class FMP(Provider):
 
 class Finnhub(Provider):
     name, env = "finnhub", ("FINNHUB_API_KEY",)
-    capabilities = frozenset({"quote", "news", "analyst_recs", "ipo_calendar"})
+    capabilities = frozenset({"quote", "news", "analyst_recs", "ipo_calendar", "insider"})
     BASE = "https://finnhub.io/api/v1/"
 
     def _get(self, path, **q):
@@ -78,9 +88,21 @@ class Finnhub(Provider):
         rows = self._get("stock/recommendation", symbol=s)
         if not rows:
             return None
-        r = rows[0]
-        return {"period": r.get("period"), "strong_buy": r.get("strongBuy"), "buy": r.get("buy"),
-                "hold": r.get("hold"), "sell": r.get("sell"), "strong_sell": r.get("strongSell")}
+        hist = [{"period": r.get("period"), "strong_buy": r.get("strongBuy"), "buy": r.get("buy"),
+                 "hold": r.get("hold"), "sell": r.get("sell"), "strong_sell": r.get("strongSell")} for r in rows[:4]]
+        return {**hist[0], "history": hist}
+
+    def insider(self, s, months: int = 6):
+        d = self._get("stock/insider-sentiment", symbol=s, **{"from": days_ago(months * 31),
+                                                                "to": date.today().isoformat()})
+        rows = sorted((d or {}).get("data", []), key=lambda r: (r["year"], r["month"]))
+        if not rows:
+            return None
+        avg = lambda xs: sum(xs) / len(xs) if xs else None  # noqa: E731
+        return {"months": [{"period": f"{r['year']}-{r['month']:02d}", "change": r.get("change"),
+                            "mspr": num(r.get("mspr"))} for r in rows],
+                "mspr_avg_3m": avg([r["mspr"] for r in rows[-3:] if r.get("mspr") is not None]),
+                "net_change": sum(r.get("change") or 0 for r in rows)}
 
     def ipo_calendar(self, _=None, days: int = 30):
         d = self._get("calendar/ipo", **{"from": date.today().isoformat(),

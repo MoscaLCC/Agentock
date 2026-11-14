@@ -10,6 +10,7 @@ import hashlib
 import importlib.util
 import inspect
 import json
+import os
 import time
 import uuid
 from dataclasses import dataclass
@@ -27,13 +28,25 @@ from .spec import AgentSpec, load_agent
 @dataclass
 class AgentResult:
     agent: str
-    status: str  # ok | failed
+    status: str  # ok | failed | skipped
     output: object = None
     error: str | None = None
     cached: bool = False
     cost_usd: float | None = None
     duration_ms: int | None = None
     turns: int | None = None
+
+
+_SLOTS: dict = {}
+
+
+def llm_slots() -> asyncio.Semaphore:
+    """Limita agentes LLM em simultâneo (AGENTOCK_LLM_PARALLEL, por omissão 4). Um semáforo por event loop."""
+    loop = asyncio.get_running_loop()
+    if loop not in _SLOTS:
+        _SLOTS.clear()
+        _SLOTS[loop] = asyncio.Semaphore(int(os.environ.get("AGENTOCK_LLM_PARALLEL", "4")))
+    return _SLOTS[loop]
 
 
 class AgentError(Exception):
@@ -61,9 +74,18 @@ def new_run_id(ticker: str | None = None) -> str:
     return f"{stamp}-{(ticker or 'run').replace('.', '_')}-{uuid.uuid4().hex[:6]}"
 
 
+def _path(inputs: dict, key: str):
+    head, _, rest = key.partition(".")
+    v = to_jsonable(inputs.get(head))
+    for part in filter(None, rest.split(".")):
+        v = v.get(part) if isinstance(v, dict) else None
+    return v
+
+
 def cache_key(spec: AgentSpec, inputs: dict) -> str:
+    """cache_key aceita caminhos (ex.: profile.symbol) para não depender de campos voláteis como o preço."""
     keys = spec.cache_key or sorted(inputs)
-    payload = json.dumps({k: to_jsonable(inputs.get(k)) for k in keys}, sort_keys=True, default=str)
+    payload = json.dumps({k: _path(inputs, k) for k in keys}, sort_keys=True, default=str)
     return f"{spec.name}:{hashlib.sha256(payload.encode()).hexdigest()[:32]}"
 
 
@@ -93,7 +115,23 @@ async def _run_script(spec: AgentSpec, inputs: dict):
 
 
 # ---------------------------------------------------------------- LLM
-def _options(spec: AgentSpec, vars_: dict, ctx: dict) -> ClaudeAgentOptions:
+RUNS_DIR = Path(__file__).resolve().parent.parent / "data" / "runs"
+
+
+def _write_file_inputs(spec: AgentSpec, inputs: dict, vars_: dict, run_id: str) -> list[str]:
+    if not spec.file_inputs:
+        return []
+    d = RUNS_DIR / run_id / spec.name
+    d.mkdir(parents=True, exist_ok=True)
+    for name in spec.file_inputs:
+        p = d / f"{name}.json"
+        p.write_text(json.dumps(to_jsonable(inputs.get(name)), ensure_ascii=False, indent=1, default=str),
+                     encoding="utf-8")
+        vars_[f"{name}_file"] = p.as_posix()
+    return [str(d)]
+
+
+def _options(spec: AgentSpec, vars_: dict, ctx: dict, add_dirs: list[str] | None = None) -> ClaudeAgentOptions:
     mcp = dict(spec.mcp_servers)
     if spec.market_tools:
         from .market_tools import build_market_server
@@ -110,6 +148,8 @@ def _options(spec: AgentSpec, vars_: dict, ctx: dict) -> ClaudeAgentOptions:
         kwargs["effort"] = spec.effort
     if spec.max_budget_usd:
         kwargs["max_budget_usd"] = spec.max_budget_usd
+    if add_dirs:
+        kwargs["add_dirs"] = add_dirs
     if spec.subagents:
         kwargs["agents"] = {
             n: AgentDefinition(description=d["description"], prompt=spec.read(d["prompt"]),
@@ -122,9 +162,10 @@ def _options(spec: AgentSpec, vars_: dict, ctx: dict) -> ClaudeAgentOptions:
 async def _run_llm(spec: AgentSpec, inputs: dict, ctx: dict):
     vars_ = {k: (v if isinstance(v, (str, int, float)) else dumps(v)) for k, v in inputs.items()}
     vars_["now"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    add_dirs = _write_file_inputs(spec, inputs, vars_, ctx["run_id"])
     result = None
     # consumir o gerador até ao fim (um return a meio deixa-o por fechar → RuntimeError no aclose)
-    async for msg in query(prompt=spec.task_tpl.safe_substitute(vars_), options=_options(spec, vars_, ctx)):
+    async for msg in query(prompt=spec.task_tpl.safe_substitute(vars_), options=_options(spec, vars_, ctx, add_dirs)):
         if isinstance(msg, ResultMessage):
             result = msg
     if result is None:
@@ -141,8 +182,10 @@ async def _run_llm(spec: AgentSpec, inputs: dict, ctx: dict):
 
 
 # ---------------------------------------------------------------- API
-async def run_agent(name: str, *, run_id: str | None = None, node: str | None = None, use_cache: bool = True,
-                    conn=None, agents_dir: Path | None = None, **inputs) -> AgentResult:
+async def run_agent(name: str, inputs: dict | None = None, *, run_id: str | None = None, node: str | None = None,
+                    use_cache: bool = True, conn=None, agents_dir: Path | None = None, **kw_inputs) -> AgentResult:
+    """inputs: dict (preferível — nenhum nome de input colide com estes argumentos) ou **kw_inputs."""
+    inputs = {**(inputs or {}), **kw_inputs}
     conn = conn or db.connect()
     run_id = run_id or new_run_id(inputs.get("ticker"))
     t0 = time.time()
@@ -153,10 +196,14 @@ async def run_agent(name: str, *, run_id: str | None = None, node: str | None = 
         persist(conn, run_id, node, inputs.get("ticker"), res)
         return res
 
+    inputs = {**spec.defaults, **{k: v for k, v in inputs.items() if v is not None or k not in spec.defaults}}
     missing = [i for i in spec.inputs if i not in inputs]
+    empty = [i for i in spec.inputs if i in inputs and inputs[i] is None]
     key = cache_key(spec, inputs) if spec.cache_ttl else None
     if missing:
         res = AgentResult(spec.name, "failed", error=f"faltam inputs {missing}")
+    elif empty:
+        res = AgentResult(spec.name, "skipped", error=f"sem dados de entrada {empty} (nó a montante falhou)")
     elif key and use_cache and (raw := db.agent_cache_get(conn, key)):
         res = AgentResult(spec.name, "ok", _restore(spec, raw), cached=True, duration_ms=0, cost_usd=0.0)
     else:
@@ -164,7 +211,8 @@ async def run_agent(name: str, *, run_id: str | None = None, node: str | None = 
             if spec.kind == "script":
                 output, meta = await _run_script(spec, inputs), {}
             else:
-                output, meta = await _run_llm(spec, inputs, {"run_id": run_id, "agent": spec.name})
+                async with llm_slots():
+                    output, meta = await _run_llm(spec, inputs, {"run_id": run_id, "agent": spec.name})
             res = AgentResult(spec.name, "ok", output, **meta)
             if key:
                 db.agent_cache_set(conn, key, spec.name, dumps(output), spec.cache_ttl)

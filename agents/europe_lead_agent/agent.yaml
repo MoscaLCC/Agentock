@@ -1,0 +1,4 @@
+name: europe_lead_agent
+extends: _shared/lead_base
+description: 2.5 — o que a sessão europeia fez depois do fecho da bolsa da ação (sinal para a abertura americana).
+defaults: {group: europe}

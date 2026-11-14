@@ -32,3 +32,22 @@ class Rating(IntEnum):
         if key in aliases:
             return aliases[key]
         raise ValueError(f"Classificação desconhecida: {value!r}")
+
+
+class IpoRating(IntEnum):
+    EVITAR = -1
+    NEUTRO = 0
+    SUBSCREVER = 1
+
+    @property
+    def label(self) -> str:
+        return {-1: "Evitar", 0: "Neutro", 1: "Subscrever"}[int(self)]
+
+    @classmethod
+    def parse(cls, value) -> "IpoRating":
+        key = str(value).strip().lower()
+        aliases = {"evitar": cls.EVITAR, "avoid": cls.EVITAR, "neutro": cls.NEUTRO, "neutral": cls.NEUTRO,
+                   "subscrever": cls.SUBSCREVER, "subscribe": cls.SUBSCREVER, "participate": cls.SUBSCREVER}
+        if key in aliases:
+            return aliases[key]
+        raise ValueError(f"Classificação de IPO desconhecida: {value!r}")

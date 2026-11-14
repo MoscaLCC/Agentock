@@ -1,0 +1,5 @@
+name: guard_agent
+kind: script
+description: Verificador anti-alucinação da classificação — confere cada número citado contra o dossier, regista lacunas e monta a Synthesis final.
+inputs: [decision, dossier, profile]
+defaults: {version: v1, run_id: null}
