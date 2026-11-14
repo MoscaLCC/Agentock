@@ -1,6 +1,6 @@
 # Plano de implementação — Agentock
 
-> Estado em 2026-11-14 (rev. 5 — **todas as fases implementadas**; ver "Pendências"). Documento vivo.
+> Estado em 2026-11-14 (rev. 6 — **todas as fases implementadas e validadas com dados reais**). Documento vivo.
 
 ## 0. Estado
 
@@ -12,8 +12,8 @@
 | 3 — Dados restantes | ✅ | 9988.HK: sinais entre sessões aplicáveis (BABA + futuros após o fecho de HK), Piotroski/Altman, DCF com conversão CNY→HKD |
 | 4 — Notícias e sentimento | ✅ | 4 janelas (4h/24h/7d/30d) + sentimento correram para AAPL |
 | 5 — Análise competitiva | ✅ | AAPL: peers validados (GoerTek rejeitada como fornecedora), comps, quotas IDC, 19 subsidiárias do Exhibit 21 |
-| 6 — Síntese completa | ✅ código / ⚠️ 1 validação | timing e forecast correram; a classificação com o dossier completo falhou por **falta de créditos da API** (ver Pendências) |
-| 6b — IPOs | ✅ código / ⚠️ validação | calendário real (Anthropic, 19-nov, 74 mil M USD; 2 SPACs excluídos); `pre_ipo_agent` e `ipo_web_agent` ainda não correram (créditos) |
+| 6 — Síntese completa | ✅ | AAPL com os 29 nós: **hold, confiança 0,60 (v2)**; o guard verificou 35 números citados, 0 sem correspondência; debate bull/bear com subagentes |
+| 6b — IPOs | ✅ | `ipo_web_agent` encontrou um IPO em Tóquio (Mitsubishi UBE Cement); pré-IPO da Anthropic: S-1/A via SEC, `deal_math` (916 mil M–1,02 biliões USD), peers, janela de IPOs de IA, debate → **neutro 0,50**; MUCC sem prospeto → **neutro 0,35** com 15 campos "não divulgado" (não estimou); alertas Telegram enviados |
 | 7 — Avaliação | ✅ código | backfill + relatório; precisa de tempo: N ≥ 30 classificações com 30 dias |
 | 8 — Universo e escala | ✅ | top 500 em ~8 s, 18/18 megacaps de referência, estimativa de custo antes de correr |
 | 9 — Bot Telegram + histórico | ✅ código | `tools/telegram_bot.py` (só o teu chat); página HTML de histórico gerada |
@@ -21,10 +21,11 @@
 **62 testes unitários** (`python -m unittest discover -s tests -t .`) + testes reais (`tools/smoke_data.py`, `tools/probe_*.py`).
 
 ### Pendências
-1. **Créditos da API Anthropic esgotados** (erro "Credit balance is too low" a meio da execução completa da AAPL). Opções: carregar créditos, ou retirar `ANTHROPIC_API_KEY` do `.env` para o SDK usar o login do Claude Code. **Decisão do utilizador** (afeta faturação).
-2. Depois dos créditos: correr `python flow.py AAPL` (classificação v2 com o dossier completo), `python flow.py --ipos` (análise do IPO da Anthropic + `ipo_web_agent`).
-3. GuruFocus: o token não tem acesso à API ("API is for data users only"); fica desligado por `requires_env`/sem uso.
-4. Fase 7: o relatório só é fiável com N ≥ 30 classificações avaliadas a 30 dias — correr `--backfill` e `--eval` periodicamente.
+1. ~~Créditos da API esgotados~~ → resolvido com `AGENTOCK_CLAUDE_AUTH=subscription` (D21): os agentes usam o login do Claude Code. A `ANTHROPIC_API_KEY` está nas variáveis de ambiente do **Windows** (não no `.env`) e ficou intacta.
+2. Fase 7: o relatório só é fiável com N ≥ 30 classificações avaliadas a 30 dias — correr `--backfill` e `--eval` periodicamente.
+3. GuruFocus: o token não tem acesso à API ("API is for data users only"); fica desligado.
+4. Não corrido de propósito: `--universe --yes` (500 análises gastariam muito dos limites da subscrição) e o bot (`tools/telegram_bot.py` é um processo que fica a correr — arrancar quando quiseres).
+5. Cobertura de IPOs fora dos EUA depende da pesquisa web (1 IPO encontrado em 30 dias, acima de 500 M USD) — avaliar ao longo do tempo.
 
 ---
 
@@ -44,7 +45,7 @@ python flow.py --backfill && python flow.py --eval
 python flow.py --report AAPL            # data/reports/AAPL_historico.html
 python tools/telegram_bot.py            # bot: /run AAPL, /status AAPL, /history AAPL, /ipos
 ```
-Custo observado: ~1,4 USD por ação no fluxo completo sem a classificação; a classificação v2 custou 0,18 USD na Samsung (dossier mais pequeno). A estimativa do `--universe` usa a média das execuções completas gravadas.
+Custo equivalente observado (o que custaria em créditos da API; com a subscrição não é faturado, mas conta para os limites de utilização): fluxo completo de uma ação ~2 USD sem cache (classificação v2 com dossier completo: 0,71 USD); análise pré-IPO 1,1–1,4 USD. A estimativa do `--universe` usa a média das execuções completas gravadas.
 
 ---
 
@@ -70,6 +71,7 @@ Custo observado: ~1,4 USD por ação no fluxo completo sem a classificação; a 
 | D18 | Máx. 4 agentes LLM em paralelo (`AGENTOCK_LLM_PARALLEL`) | limites da API |
 | D19 | Universo: cotação principal = a de **maior liquidez** (valor negociado/dia em USD) | a pontuação por moeda escolhia APC.DE em vez de AAPL e ADRs/locais mal |
 | D20 | GuruFocus por `requires_env` (MCP condicional) | o token existe mas não tem acesso à API |
+| D21 | **Agentes LLM autenticados pela subscrição do Claude Code** (`AGENTOCK_CLAUDE_AUTH=subscription`): o Agentock retira a `ANTHROPIC_API_KEY` só do seu processo; `api` volta aos créditos | créditos da API esgotados; decisão do utilizador. A variável do Windows não foi apagada para não afetar outros programas |
 
 ---
 
