@@ -12,6 +12,7 @@ Os comandos com "_" são tocáveis no Telegram (enviam-se inteiros). Só corre u
 import asyncio
 import json
 import os
+import re
 import sys
 import traceback
 import urllib.parse
@@ -37,6 +38,26 @@ def resolve_ticker(conn, arg: str) -> str | None:
         if t.upper() == a or M.command_arg(t).upper() == a:
             return t
     return None
+
+
+def run_command(symbol: str) -> str:
+    return f"/run_{M.command_arg(symbol)}"
+
+
+def symbol_from_command(arg: str) -> str:
+    """'005930_KS' → '005930.KS' (o último '_' antes de um sufixo de bolsa volta a ser '.')."""
+    m = re.fullmatch(r"(.+)_([A-Z]{1,3})", arg.upper())
+    return f"{m.group(1)}.{m.group(2)}" if m else arg.upper()
+
+
+def profile_error_text(query: str, error: str) -> str:
+    """Erro do perfil (ambíguo / sem cotação ativa) com as opções em comandos tocáveis."""
+    msg = re.sub(r"^ValueError:\s*", "", error or "")
+    options = re.findall(r"→ ([A-Z0-9.\-^=]+)", msg)
+    lines = [f"⚠️ <b>Não analisei '{M.esc(query)}'</b>", M.esc(M.shorten(msg, 400))]
+    if options:
+        lines += ["", "Escolhe:"] + [run_command(o) for o in dict.fromkeys(options)]
+    return "\n".join(lines)
 
 
 def detail_text(conn, ticker: str) -> str:
@@ -129,6 +150,9 @@ class Bot:
         async with self.busy:
             agent = "rating_agent" if ver == "v2" else "rating_v1_agent"
             rep = await run_flow("ticker", {"ticker": ticker, "rating_agent": agent, "rating_version": ver})
+        prof = rep.results.get("profile")
+        if not prof or prof.status != "ok":  # pedido ambíguo, inexistente ou deslistado: o fluxo parou no perfil
+            return await self.send(profile_error_text(ticker, prof.error if prof else "sem perfil"))
         g = rep.results.get("guard")
         if not g or g.status != "ok":
             return await self.send(f"{ticker}: a classificação falhou ({(g.error if g else 'sem guard')[:300]}).", html=False)
@@ -136,8 +160,12 @@ class Bot:
         rating = Rating.parse(s.rating)
         price = f"{M.price_pt(s.price)} {s.currency or ''}".strip() if s.price is not None else None
         failed = [n for n, r in rep.results.items() if r.status != "ok"]
+        note = getattr(prof.output, "resolution_note", None)
         lines = [f"{M.EMOJI_RATING[int(rating)]} <b>{M.esc(s.ticker)} — {M.esc(rating.label.upper())}</b>",
-                 M.esc(" · ".join(x for x in (price, f"confiança {s.confidence:.0%}", s.version) if x)), ""]
+                 M.esc(" · ".join(x for x in (price, f"confiança {s.confidence:.0%}", s.version) if x))]
+        if note:
+            lines.append(f"<i>Pedido: {M.esc(M.shorten(note.split(';')[0], 90))}</i>")
+        lines.append("")
         lines += [f"• {M.esc(M.shorten(p, 80))}" for p in (s.key_points or [M.first_clause(r) for r in s.reasons])[:3]]
         if failed:
             lines += ["", M.esc("Sem resultado: " + ", ".join(failed))]
@@ -198,6 +226,8 @@ class Bot:
         elif low.startswith("/ipo_") or (low == "/ipo" and args):
             arg = cmd[len("/ipo_"):] if low.startswith("/ipo_") else " ".join(args)
             await self.send(ipo_detail_text(db.connect(), arg))
+        elif low.startswith("/run_"):  # versão tocável: /run_005930_KS
+            await self.cmd_run([symbol_from_command(cmd[len("/run_"):])] + args)
         elif low == "/run":
             await self.cmd_run(args)
         elif low == "/status":

@@ -46,6 +46,19 @@ def pct(price, prev):
     return (price / prev - 1) * 100 if price and prev else None
 
 
+def is_stale(ts, max_days: int = 14) -> bool:
+    """Cotação antiga demais para ser 'atual' (ex.: Alpaca devolvia um negócio de 2023 de uma ação deslistada)."""
+    if not ts:
+        return False
+    try:
+        t = datetime.fromisoformat(str(ts).replace("Z", "+00:00")[:32])
+    except ValueError:
+        return False
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - t).days > max_days
+
+
 def bars_from_records(rows, t_key, o="open", h="high", l="low", c="close", v="volume", daily=True) -> list[dict]:
     out = []
     for r in rows:

@@ -1,11 +1,19 @@
-"""0.2 profile_agent: contexto de que todos os outros agentes precisam."""
+"""0.2 profile_agent: resolve o pedido (ticker, código ou nome) para a cotação PRINCIPAL e viva da empresa,
+e monta o contexto de que todos os outros agentes precisam.
+
+Resolução (aprendida com "SSU", que é a Samsung em Frankfurt e também uma empresa americana deslistada):
+  1. candidatos diretos (o símbolo tal como escrito; códigos numéricos → .KS/.KQ/.SS/.SZ, .T/.HK)
+  2. uma cotação só conta se estiver VIVA (último negócio há ≤ 14 dias) — fornecedores guardam perfis antigos
+  3. cotações secundárias (Frankfurt, Estugarda, OTC, Londres IOB…) → cotação principal da mesma empresa
+  4. sem candidato direto vivo → pesquisa; correspondência exata do código noutras bolsas (SSU → SSU.F)
+  5. várias empresas vivas possíveis → erro com as opções; nenhuma → erro (o fluxo pára aqui, sem gastar LLM)
+"""
 import importlib.util
 import re
-from datetime import date
 from pathlib import Path
 
 from core.data import DataUnavailable, get_router
-from core.data.markets import calendar_code, market_of
+from core.data.markets import calendar_code, market_of, suffix
 from core.util import BENCHMARK, days_between
 
 _spec = importlib.util.spec_from_file_location("_profile_schema", Path(__file__).with_name("schema.py"))
@@ -14,7 +22,11 @@ _spec.loader.exec_module(_schema)
 Profile, CrossListing = _schema.Profile, _schema.CrossListing
 
 SYMBOL_RE = re.compile(r"^[A-Z0-9^][A-Z0-9.\-=^]{0,14}$")
-SECONDARY_EXCH = {"PNK", "FRA", "BER", "STU", "MUN", "DUS", "HAM", "HAN", "MEX", "BUE", "SGO", "VIE", "NEO"}
+SECONDARY_EXCH = {"PNK", "OTC", "OQB", "OQX", "FRA", "BER", "STU", "MUN", "DUS", "HAM", "HAN", "MEX", "BUE", "SGO",
+                  "VIE", "NEO", "CXE", "IOB", "AQS", "TLO"}
+SECONDARY_SFX = {".F", ".SG", ".BE", ".MU", ".DU", ".HM", ".HA", ".IL", ".XC", ".MX", ".VI", ".BA", ".SN"}
+MAX_STALE_DAYS = 14
+LEGAL = re.compile(r"\b(inc|corp|corporation|co|ltd|limited|plc|nv|n v|sa|ag|se|holdings?|group|company)\b")
 
 
 def _candidates(q: str) -> list[str]:
@@ -26,21 +38,106 @@ def _candidates(q: str) -> list[str]:
     return [s] if SYMBOL_RE.match(s) else []
 
 
-def resolve(r, query: str):
-    tried = []
-    for sym in _candidates(query):
+def company_key(name: str | None) -> str:
+    n = re.sub(r"[^\w\s]", " ", (name or "").lower())
+    return re.sub(r"\s+", " ", LEGAL.sub(" ", n)).strip()
+
+
+def is_secondary(symbol: str, exchange: str | None = None) -> bool:
+    return (exchange or "").upper() in SECONDARY_EXCH or suffix(symbol) in SECONDARY_SFX
+
+
+class Resolver:
+    """Resolução com funções injetáveis (testável sem rede)."""
+
+    def __init__(self, r):
+        self.r = r
+        self._alive: dict[str, tuple[bool, str | None]] = {}
+
+    def profile(self, sym):
+        return self.r.get("profile", sym)
+
+    def search(self, q) -> list[dict]:
         try:
-            return sym, r.get("profile", sym)
-        except DataUnavailable as e:
-            tried.append(f"{sym}: {e}")
-    hits = [h for h in r.get("search", query.strip()).data if h.get("type") == "EQUITY"
-            and h.get("exchange") not in SECONDARY_EXCH]
-    for h in hits[:5]:
-        try:
-            return h["symbol"], r.get("profile", h["symbol"])
-        except DataUnavailable as e:
-            tried.append(f"{h['symbol']}: {e}")
-    raise ValueError(f"não consegui resolver '{query}' ({'; '.join(tried) or 'sem resultados'})")
+            return [h for h in self.r.get("search", q).data if h.get("type") == "EQUITY" and h.get("symbol")]
+        except DataUnavailable:
+            return []
+
+    def alive(self, sym) -> tuple[bool, str | None]:
+        """Viva = barras com preço e volume REAIS nos últimos 14 dias. Alguns fornecedores devolvem barras-fantasma
+        para cotações mortas (ex.: Tiingo para SSU: preço 0,000001 e volume 0 todos os dias até hoje)."""
+        if sym not in self._alive:
+            try:
+                bars = self.r.get("eod", sym, days=30).data
+            except DataUnavailable:
+                bars = []
+            real = [b for b in bars if (b.get("c") or 0) > 1e-4 and (b.get("v") is None or b["v"] > 0)]
+            last = real[-1]["t"] if real else None
+            self._alive[sym] = (last is not None and days_between(last) <= MAX_STALE_DAYS, last)
+        return self._alive[sym]
+
+    def primary_listing(self, name: str, exclude: set) -> str | None:
+        """Cotação principal viva da empresa: 1.º resultado não secundário da pesquisa pelo nome."""
+        key = company_key(name)
+        for h in self.search(name):
+            if h["symbol"] in exclude or is_secondary(h["symbol"], h.get("exchange")):
+                continue
+            if company_key(h.get("name")) != key and key not in company_key(h.get("name")):
+                continue
+            if self.alive(h["symbol"])[0]:
+                return h["symbol"]
+        return None
+
+    def resolve(self, query: str):
+        notes = []
+        for sym in _candidates(query):
+            try:
+                prof = self.profile(sym)
+            except DataUnavailable:
+                continue
+            ok, last = self.alive(sym)
+            secondary = is_secondary(sym, prof.data.get("exchange"))
+            if ok and not secondary:
+                return sym, prof, None
+            alt = self.primary_listing(prof.data["name"], {sym})
+            stale = f"sem negociação desde {last}" if last else "sem negociação recente"
+            if alt:
+                why = "cotação secundária" if ok or secondary else stale
+                return alt, self.profile(alt), f"{query} → {prof.data['name']} ({alt}); {sym}: {why}"
+            if ok:
+                return sym, prof, f"{sym} é uma cotação secundária e não encontrei a principal"
+            notes.append(f"{sym} ({prof.data['name']}) {stale}")
+
+        q = query.strip().upper()
+        hits = self.search(query.strip())
+        exact = [h for h in hits if h["symbol"].upper().split(".")[0] == q]
+        # código exato noutras bolsas: várias empresas → ambíguo. Pesquisa por nome: a mais relevante (ordem do Yahoo)
+        found = self._companies(exact if exact else hits[:6], stop_at_first=not exact)
+        if len(found) == 1:
+            name, sym = found[0]
+            note = f"{query} → {name} ({sym})" + (f"; {notes[0]}" if notes else "")
+            return sym, self.profile(sym), note
+        if len(found) > 1:
+            opts = "; ".join(f"{n} → {s}" for n, s in found[:5])
+            raise ValueError(f"'{query}' é ambíguo — escolhe uma: {opts}")
+        detail = "; ".join(notes) or "sem resultados"
+        raise ValueError(f"não encontrei nenhuma cotação ativa para '{query}' ({detail})")
+
+    def _companies(self, hits: list[dict], stop_at_first: bool) -> list[tuple[str, str]]:
+        """(nome, cotação principal viva) por empresa distinta, pela ordem dos resultados."""
+        seen, found = set(), []
+        for h in hits:
+            key = company_key(h.get("name")) or h["symbol"]
+            if key in seen:
+                continue
+            seen.add(key)
+            sym = self.primary_listing(h.get("name") or "", set()) or \
+                (h["symbol"] if self.alive(h["symbol"])[0] else None)
+            if sym:
+                found.append((h.get("name"), sym))
+                if stop_at_first:
+                    break
+        return found
 
 
 def _usd(r, amount, currency):
@@ -59,7 +156,8 @@ def _usd(r, amount, currency):
 
 def run(ticker: str):
     r = get_router()
-    symbol, prof_res = resolve(r, ticker)
+    res = Resolver(r)
+    symbol, prof_res, note = res.resolve(ticker)
     prof = prof_res.data
     market = market_of(symbol)
     sources = {"profile": prof_res.provider}
@@ -82,17 +180,14 @@ def run(ticker: str):
     days_listed = days_between(first) if first else None
 
     cross = []
-    try:
-        for h in r.get("search", prof["name"]).data:
-            sym = h.get("symbol")
-            if not sym or sym == symbol or h.get("type") != "EQUITY" or h.get("exchange") in SECONDARY_EXCH:
-                continue
-            m = market_of(sym)
-            if m in ("OTHER", "INDEX", "FUT", "FX"):
-                continue
-            cross.append(CrossListing(symbol=sym, exchange=h.get("exchange"), market=m, name=h.get("name")))
-    except DataUnavailable:
-        pass
+    for h in res.search(prof["name"]):
+        sym = h["symbol"]
+        if sym == symbol or is_secondary(sym, h.get("exchange")):
+            continue
+        m = market_of(sym)
+        if m in ("OTHER", "INDEX", "FUT", "FX"):
+            continue
+        cross.append(CrossListing(symbol=sym, exchange=h.get("exchange"), market=m, name=h.get("name")))
 
     peers = []
     if market == "US":
@@ -111,4 +206,5 @@ def run(ticker: str):
         ipo_recente=bool(days_listed is not None and days_listed < 365), history_days=len(bars),
         shares_outstanding=prof.get("shares_outstanding"), float_shares=prof.get("float_shares"),
         benchmark=BENCHMARK.get(market), cross_listings=cross[:8], peers_hint=peers, sources=sources,
+        resolution_note=note,
     )

@@ -29,6 +29,9 @@ RATING = {"v1": "rating_v1_agent", "v2": "rating_agent"}
 
 def print_report(label: str, report, verbose: bool = False, final: str = "guard") -> None:
     print(f"\n=== {label}  run {report.run_id}")
+    prof = report.results.get("profile")
+    if prof is not None and prof.status == "ok" and getattr(prof.output, "resolution_note", None):
+        print(f"  pedido resolvido: {prof.output.resolution_note}")
     for name, r in report.results.items():
         cost = f"${r.cost_usd:.4f}" if r.cost_usd else "-"
         dur = f"{(r.duration_ms or 0) / 1000:.1f}s"

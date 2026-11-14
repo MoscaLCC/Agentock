@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from ..http import ProviderError, fetch
 from ..markets import base_code, market_of, suffix
-from .base import Provider, bars_from_records, days_ago, now_iso, num, pct, unix_to_iso
+from .base import Provider, bars_from_records, days_ago, is_stale, now_iso, num, pct, unix_to_iso
 
 
 def _qs(**q) -> str:
@@ -73,7 +73,7 @@ class Finnhub(Provider):
 
     def quote(self, s):
         d = self._get("quote", symbol=s)
-        if not d or not d.get("c"):
+        if not d or not d.get("c") or is_stale(unix_to_iso(d.get("t"))):
             return None
         return {"price": num(d["c"]), "prev_close": num(d.get("pc")), "change_pct": num(d.get("dp")),
                 "currency": "USD", "ts": unix_to_iso(d.get("t"))}
@@ -127,8 +127,8 @@ class Alpaca(Provider):
         d = self._get(f"v2/stocks/{s}/snapshot", feed="iex")
         price = num((d.get("latestTrade") or {}).get("p"))
         prev = num((d.get("prevDailyBar") or {}).get("c"))
-        if not price:
-            return None
+        if not price or is_stale((d.get("latestTrade") or {}).get("t")):
+            return None  # sem negócio recente: o router passa ao fornecedor seguinte
         return {"price": price, "prev_close": prev, "change_pct": pct(price, prev), "currency": "USD",
                 "ts": (d.get("latestTrade") or {}).get("t")}
 

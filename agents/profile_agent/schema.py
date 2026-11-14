@@ -11,6 +11,8 @@ class CrossListing(BaseModel):
 class Profile(BaseModel):
     query: str
     symbol: str
+    resolution_note: str | None = Field(default=None, description="como o pedido foi resolvido, se diferente do escrito "
+                                                                  "(ex.: 'SSU → Samsung Electronics (005930.KS)')")
     name: str
     market: str
     exchange: str | None = None
