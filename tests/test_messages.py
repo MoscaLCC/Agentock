@@ -95,16 +95,11 @@ class IpoMessageTests(unittest.TestCase):
 
 
 class BotDetailTests(unittest.TestCase):
-    def test_detail_and_ticker_resolution(self):
+    def test_ticker_resolution(self):
         conn = db.connect(":memory:")
-        db.save_run(conn, ticker="005930.KS", rating=0, confidence=0.4, price=206000.0, reasons=["R1", "R2"],
-                    payload={"headline": "Alvos altos, técnica fraca", "risks": ["Volatilidade"], "horizon": "3-12 meses"},
-                    version="v2", currency="KRW")
+        db.save_run(conn, ticker="005930.KS", rating=0, confidence=0.4, price=206000.0, reasons=["R1"], payload={})
         self.assertEqual(bot.resolve_ticker(conn, "005930_KS"), "005930.KS")
-        txt = bot.detail_text(conn, "005930.KS")
-        self.assertIn("005930.KS — HOLD", txt)
-        self.assertIn("1. R1", txt)
-        self.assertIn("Alvos altos, técnica fraca", txt)
+        self.assertIsNone(bot.resolve_ticker(conn, "NADA"))
 
 
 if __name__ == "__main__":

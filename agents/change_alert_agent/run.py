@@ -30,6 +30,17 @@ def previous_reasons(conn, ticker: str) -> list[str]:
     return json.loads(rows[1]["reasons"]) if len(rows) > 1 and rows[1]["reasons"] else []
 
 
+def _send_card(conn, notifier, s: Synthesis, caption: str) -> bool:
+    """Alerta com o cartão visual (imagem + botões); se não houver dados da execução, o chamador envia só texto."""
+    if not s.run_id or not hasattr(notifier, "send_photo"):
+        return False
+    from core import report_data, sections
+    data = report_data.by_run(conn, s.run_id)
+    if not data or not data["outputs"]:
+        return False
+    return notifier.send_photo(sections.card_png(data), caption, html=True, buttons=sections.buttons(data["run"]["id"]))
+
+
 def run(synthesis, conn=None, notifier=None, rules: ChangeRules | None = None) -> dict:
     s = synthesis if isinstance(synthesis, Synthesis) else Synthesis.model_validate(as_dict(synthesis))
     conn = conn or db.connect()
@@ -41,8 +52,9 @@ def run(synthesis, conn=None, notifier=None, rules: ChangeRules | None = None) -
     previous = [messages.first_clause(p) for p in previous_points(conn, s.ticker)]
     diff = reasons_diff(previous, current)
     msg = messages.rating_change(change, s, diff)
+    n = notifier or default_notifier()
     try:
-        sent = (notifier or default_notifier()).send(msg, html=True)
+        sent = _send_card(conn, n, s, msg) or n.send(msg, html=True)
     except Exception as e:  # falha de rede não pode perder o registo da alteração
         sent, msg = False, f"{msg}\n[ERRO ao notificar: {e}]"
     conn.execute(
