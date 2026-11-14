@@ -1,0 +1,12 @@
+name: relations_agent
+description: 2.13 — empresa-mãe, subsidiárias, parceiros, fornecedores e clientes relevantes (documentos oficiais SEC/DART + web) e como as cotadas relacionadas se estão a mover.
+model: claude-sonnet-5-5
+max_turns: 20
+max_budget_usd: 0.8
+inputs: [profile]
+tools: [WebSearch, WebFetch, Skill]
+market_tools: [subsidiaries, filings, search, quote]
+hooks: [block_domains]
+output: schema.py:Relations
+cache_ttl: 2592000
+cache_key: [profile.symbol]

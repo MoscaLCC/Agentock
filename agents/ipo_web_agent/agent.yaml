@@ -1,0 +1,12 @@
+name: ipo_web_agent
+description: I.1b — IPOs previstos fora dos EUA (Hong Kong, China A, Coreia, Japão, Europa) que as APIs grátis não cobrem; pesquisa em fontes oficiais e imprensa.
+model: claude-sonnet-5-5
+max_turns: 20
+max_budget_usd: 0.8
+inputs: []
+defaults: {days: 30, min_value_usd: 500000000}
+tools: [WebSearch, WebFetch]
+hooks: [block_domains]
+output: schema.py:IpoWebList
+cache_ttl: 43200
+cache_key: [days, min_value_usd]

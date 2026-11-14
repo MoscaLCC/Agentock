@@ -1,0 +1,5 @@
+name: ipo_memory_agent
+kind: script
+description: Grava a classificação de um IPO (tabela ipo_ratings) e envia-a para o Telegram quando é nova ou mudou.
+inputs: [synthesis]
+defaults: {ipo: null, run_id: null, notify: true}

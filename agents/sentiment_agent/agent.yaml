@@ -1,0 +1,11 @@
+name: sentiment_agent
+description: 2.10 — sentimento agregado (notícias 4h/24h/7d/30d, analistas, insiders nos EUA) e a sua tendência.
+model: claude-sonnet-5-5
+max_turns: 8
+max_budget_usd: 0.5
+inputs: [profile]
+defaults: {news_4h: null, news_24h: null, news_7d: null, news_30d: null, analysts: null}
+tools: [Skill]
+market_tools: [insider]
+output: schema.py:SentimentView
+cache_ttl: 0

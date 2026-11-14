@@ -1,0 +1,8 @@
+name: news_24_hours_agent
+extends: _shared/news_base
+description: 2.2 — notícias das últimas 24 horas (cache 1 h).
+defaults:
+  hours: 24
+  focus: "o que aconteceu no último dia: factos, reações de analistas, movimentos do setor"
+  max_items: 12
+cache_ttl: 3600

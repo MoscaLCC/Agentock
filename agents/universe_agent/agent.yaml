@@ -1,4 +1,5 @@
 name: universe_agent
 kind: script
-description: Identifica as ~500 maiores empresas do mundo por market cap (todos os mercados).
-inputs: []   # opcionais: top_n (500), refresh (False)
+description: 0.1 — as N maiores empresas do mundo por market cap em USD (screener do yfinance por região, cotação principal por empresa, validação contra megacaps de referência).
+inputs: []
+defaults: {top_n: 500, refresh: false, max_age_days: 1}

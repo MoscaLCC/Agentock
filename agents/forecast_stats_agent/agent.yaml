@@ -1,0 +1,7 @@
+name: forecast_stats_agent
+kind: script
+description: 2.18a — intervalos estatísticos de preço a 1, 3 e 12 meses (volatilidade histórica, lognormal sem drift) e âncoras (alvos dos analistas, DCF).
+inputs: [profile]
+defaults: {price_targets: null, fundamental_data: null}
+cache_ttl: 3600
+cache_key: [profile.symbol, profile.price]

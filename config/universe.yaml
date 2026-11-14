@@ -1,0 +1,60 @@
+# Universo (Fase 8): screener do yfinance por região, ordenado por market cap.
+# Nº de cotações pedidas por região (páginas de 250). A região "us" inclui muitos ADRs/OTC estrangeiros,
+# por isso precisa de mais. ATENÇÃO: códigos entre aspas — em YAML, `no` (Noruega) seria lido como False.
+regions:
+  "us": 750
+  "cn": 250
+  "hk": 150
+  "jp": 150
+  "kr": 60
+  "tw": 60
+  "in": 120
+  "gb": 250      # Londres e a Alemanha listam muitas megacaps estrangeiras (ex.: APC.DE, TYT.L) antes das locais
+  "de": 500
+  "fr": 120
+  "nl": 80
+  "ch": 80
+  "it": 60
+  "es": 60
+  "se": 60
+  "dk": 20
+  "fi": 10
+  "no": 15
+  "be": 10
+  "sa": 30
+  "ca": 60
+  "au": 50
+  "br": 25
+
+# bolsas/plataformas de cotações secundárias (não são a cotação principal da empresa)
+secondary_exchanges: [PNK, OQB, OQX, FRA, BER, STU, MUN, DUS, HAM, HAN, MEX, BUE, SGO, VIE, NEO, CXE, IOB, AQS, TLO, BTS]
+
+# moeda → sufixos da cotação "de casa" (desempate entre cotações da mesma empresa)
+home_suffix:
+  USD: [""]
+  JPY: [.T]
+  KRW: [.KS, .KQ]
+  CNY: [.SS, .SZ]
+  HKD: [.HK]
+  TWD: [.TW, .TWO]
+  INR: [.NS, .BO]
+  GBP: [.L]
+  GBp: [.L]
+  EUR: [.DE, .PA, .AS, .MI, .MC, .BR, .HE, .LS, .IR, .VI]
+  CHF: [.SW]
+  SEK: [.ST]
+  DKK: [.CO]
+  NOK: [.OL]
+  SAR: [.SR]
+  CAD: [.TO, .V]
+  AUD: [.AX]
+  BRL: [.SA]
+
+# validação: estas megacaps têm de aparecer num top 500 (alternativas separadas por |)
+# As que faltarem (buracos do screener) são acrescentadas pelo router e assinaladas em "injected".
+reference: [AAPL, MSFT, NVDA, GOOGL|GOOG, AMZN, META, 2330.TW|TSM, 005930.KS, 0700.HK, 2222.SR, ASML.AS|ASML,
+            7203.T|TM, 600519.SS, NOVO-B.CO|NVO, RELIANCE.NS|RELIANCE.BO, MC.PA, NESN.SW, SHEL.L|SHEL|SHELL.AS,
+            HSBA.L|HSBC]
+
+# cotações a excluir por padrão de símbolo (ex.: BDRs brasileiros: 4 letras/dígitos + 31-39 .SA)
+exclude_patterns: ['^[A-Z0-9]{4}3[1-9]\.SA$']

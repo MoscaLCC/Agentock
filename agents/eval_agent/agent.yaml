@@ -1,0 +1,5 @@
+name: eval_agent
+kind: script
+description: Fase 7 — backfill de retornos e relatório de acerto das classificações (por classificação, confiança, mercado, versão v1/v2) e dos IPOs.
+inputs: []
+defaults: {backfill: true}

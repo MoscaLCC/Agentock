@@ -1,0 +1,6 @@
+name: comps_agent
+kind: script
+description: 2.12b — tabela de comparáveis (empresa + peers validados) com market cap em USD, múltiplos, margens, crescimento e retornos; medianas e posição relativa.
+inputs: [profile, competitors]
+cache_ttl: 86400
+cache_key: [profile.symbol, competitors.peers]

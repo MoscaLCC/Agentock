@@ -1,0 +1,10 @@
+name: forecast_agent
+description: 2.18 — cenários bear/base/bull com probabilidades e preços a 1, 3 e 12 meses, ancorados nos intervalos estatísticos, alvos e DCF.
+model: claude-opus-5-5
+max_turns: 6
+max_budget_usd: 1.0
+inputs: [profile, stats]
+defaults: {fundamental: null, sentiment: null, technical: null, analysts: null}
+tools: [Skill]
+output: schema.py:Forecast
+cache_ttl: 0

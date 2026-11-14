@@ -1,0 +1,24 @@
+name: pre_ipo_agent
+description: I.2 — análise pré-IPO (estrutura da oferta tirada do prospeto, financeiras, peers cotados, janela de IPOs, notícias), debate bull/bear e classificação Subscrever / Neutro / Evitar.
+model: claude-opus-5-5
+max_turns: 40
+max_budget_usd: 5.0
+inputs: [ipo]
+tools: [WebSearch, WebFetch, Read, Skill, Agent]
+bash: ["python scripts/*"]
+market_tools: [sec_search, search, profile, quote, financials, eod]
+hooks: [block_domains]
+output: schema.py:IpoSynthesis
+cache_ttl: 86400
+cache_key: [ipo.name, ipo.price_range, ipo.date]
+subagents:
+  bull:
+    description: Analista otimista de IPOs. Constrói o caso mais forte para subscrever, só com o resumo de pesquisa recebido.
+    prompt: subagents/bull.md
+    tools: []
+    model: claude-sonnet-5-5
+  bear:
+    description: Analista cético de IPOs. Constrói o caso mais forte para evitar, só com o resumo de pesquisa recebido.
+    prompt: subagents/bear.md
+    tools: []
+    model: claude-sonnet-5-5

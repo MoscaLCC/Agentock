@@ -13,36 +13,68 @@ dossier: &dossier
   health: $health
   fundamental: $fundamental
   fundamental_data: $fundamental_data
+  comps: $comps
+  market_share: $market_share
+  relations: $relations
   ipo_lifecycle: $ipo_lifecycle
   asia_lead: $asia_lead
   europe_lead: $europe_lead
   us_lead: $us_lead
   news_4h: $news_4h
+  news_24h: $news_24h
+  news_7d: $news_7d
+  news_30d: $news_30d
+  sentiment: $sentiment
+  timing: $timing
+  forecast: $forecast
 
 flows:
   ticker:
-    defaults: {hours: 4, rating_agent: rating_v1_agent, rating_version: v1}
+    defaults: {hours: 4, rating_agent: rating_agent, rating_version: v2}
     nodes:
       # 0 — contexto
       profile:          {agent: profile_agent, inputs: {ticker: $ticker}, timeout: 240}
-      # 1 — dados (scripts)
+      # 1 — dados (scripts, paralelo)
       indicators:       {agent: technical_indicators_agent, inputs: {profile: $profile}, timeout: 240}
-      ipo_lifecycle:    {agent: ipo_lifecycle_agent, inputs: {profile: $profile}, timeout: 240}
+      ipo_lifecycle:    {agent: ipo_lifecycle_agent, inputs: {profile: $profile}, timeout: 300}
       calendar:         {agent: calendar_agent, inputs: {profile: $profile, lifecycle: $ipo_lifecycle}, timeout: 120}
       analysts:         {agent: analysts_agent, inputs: {profile: $profile}, timeout: 120}
       price_targets:    {agent: price_targets_agent, inputs: {profile: $profile}, timeout: 120}
       health:           {agent: health_momentum_agent, inputs: {profile: $profile}, timeout: 240}
-      fundamental_data: {agent: fundamental_data_agent, inputs: {profile: $profile}, timeout: 240}
       asia_lead:        {agent: asia_lead_agent, inputs: {profile: $profile}, timeout: 240}
       europe_lead:      {agent: europe_lead_agent, inputs: {profile: $profile}, timeout: 240}
       us_lead:          {agent: us_lead_agent, inputs: {profile: $profile}, timeout: 240}
-      # 1b — notícias (LLM)
+      # 1b — notícias (LLM, multilíngue)
       news_4h:          {agent: news_4_hours_agent, inputs: {ticker: $profile.symbol, hours: $hours}}
-      # 2 — análise (LLM)
+      news_24h:         {agent: news_24_hours_agent, inputs: {ticker: $profile.symbol}}
+      news_7d:          {agent: news_7_days_agent, inputs: {ticker: $profile.symbol}}
+      news_30d:         {agent: news_30_days_agent, inputs: {ticker: $profile.symbol}, timeout: 1200}
+      # 2 — análise
       technical:        {agent: technical_agent, inputs: {profile: $profile, indicators: $indicators}}
+      competitors:      {agent: competitors_agent, inputs: {profile: $profile}}
+      comps:            {agent: comps_agent, inputs: {profile: $profile, competitors: $competitors}, timeout: 600}
+      fundamental_data: {agent: fundamental_data_agent, inputs: {profile: $profile, comps: $comps}, timeout: 240}
       fundamental:      {agent: fundamental_agent, inputs: {profile: $profile, data: $fundamental_data, health: $health}}
+      market_share:     {agent: market_share_agent, inputs: {profile: $profile, competitors: $competitors}}
+      relations:        {agent: relations_agent, inputs: {profile: $profile}}
+      sentiment:
+        agent: sentiment_agent
+        inputs: {profile: $profile, news_4h: $news_4h, news_24h: $news_24h, news_7d: $news_7d,
+                 news_30d: $news_30d, analysts: $analysts}
       # 3 — síntese
-      rating:           {agent: $rating_agent, inputs: {ticker: $profile.symbol, dossier: *dossier}, timeout: 1200}
+      timing:
+        agent: timing_agent
+        inputs: {profile: $profile, indicators: $indicators, technical: $technical, calendar: $calendar,
+                 sentiment: $sentiment, asia_lead: $asia_lead, europe_lead: $europe_lead, us_lead: $us_lead,
+                 ipo_lifecycle: $ipo_lifecycle}
+      forecast_stats:
+        agent: forecast_stats_agent
+        inputs: {profile: $profile, price_targets: $price_targets, fundamental_data: $fundamental_data}
+      forecast:
+        agent: forecast_agent
+        inputs: {profile: $profile, stats: $forecast_stats, fundamental: $fundamental, sentiment: $sentiment,
+                 technical: $technical, analysts: $analysts}
+      rating:           {agent: $rating_agent, inputs: {ticker: $profile.symbol, dossier: *dossier}, timeout: 1500}
       guard:
         agent: guard_agent
         inputs: {decision: $rating, dossier: *dossier, profile: $profile, version: $rating_version, run_id: $run_id}
@@ -53,4 +85,10 @@ flows:
   ipos:
     defaults: {days: 30, min_value_usd: 500000000}
     nodes:
-      calendar: {agent: ipo_calendar_agent, inputs: {days: $days, min_value_usd: $min_value_usd}}
+      web:      {agent: ipo_web_agent, inputs: {days: $days, min_value_usd: $min_value_usd}, timeout: 1200}
+      calendar: {agent: ipo_calendar_agent, inputs: {days: $days, min_value_usd: $min_value_usd, web: $web}}
+
+  ipo:
+    nodes:
+      pre_ipo:    {agent: pre_ipo_agent, inputs: {ipo: $ipo}, timeout: 2400}
+      ipo_memory: {agent: ipo_memory_agent, inputs: {synthesis: $pre_ipo, ipo: $ipo, run_id: $run_id}}

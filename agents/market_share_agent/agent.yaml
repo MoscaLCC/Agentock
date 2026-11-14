@@ -1,0 +1,12 @@
+name: market_share_agent
+description: 2.11 — estrutura do mercado/indústria (monopólio, oligopólio, concorrencial), quotas dos principais players e fontes. Cache por indústria (reutilizada entre ações do mesmo setor).
+model: claude-sonnet-5-5
+max_turns: 20
+max_budget_usd: 0.8
+inputs: [profile]
+defaults: {competitors: null}
+tools: [WebSearch, WebFetch, Skill]
+hooks: [block_domains]
+output: schema.py:MarketStructure
+cache_ttl: 2592000
+cache_key: [profile.industry, profile.sector]

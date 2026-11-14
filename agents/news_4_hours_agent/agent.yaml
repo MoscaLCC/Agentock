@@ -1,30 +1,8 @@
 name: news_4_hours_agent
-description: Recebe um ticker e procura notícias das últimas N horas sobre essa ação (APIs + web).
-model: null            # null = default do SDK; ex: claude-sonnet-5-5
-max_turns: 25
-max_budget_usd: 1.0    # travão por execução
-
-inputs:                # variáveis disponíveis em prompt.md / task.md como $nome
-  - ticker
-  - hours
-
-tools:                 # tools built-in
-  - WebSearch
-  - WebFetch
-  - Read
-  - Skill              # ativa as skills em .claude/skills/
-bash:                  # scripts que o agente pode executar (Bash restrito)
-  - "python scripts/*"
-
-market_tools:          # dados do router (core/market_tools.py) → mcp__market__<nome>
-  - news
-  - profile
-
-hooks:                 # log_tools está sempre ligado (data/logs/<run_id>.jsonl)
-  - block_domains
-
-mcp_servers: {}        # MCPs externos deste agente (stdio/http/sse); suporta ${ENV_VAR}
-
-cache_ttl: 0           # notícias de 4 h: sempre frescas
-
-output: schema.py:NewsReport   # ficheiro:Classe pydantic
+extends: _shared/news_base
+description: 2.1 — notícias das últimas 4 horas (última hora; sempre fresco).
+defaults:
+  hours: 4
+  focus: "notícias de última hora e factos novos que ainda podem mexer com o preço"
+  max_items: 10
+cache_ttl: 0
