@@ -1,6 +1,6 @@
 # Plano de implementação — Agentock
 
-> Estado em 2026-11-14 (rev. 2). Documento vivo: atualizar o estado de cada fase à medida que avança.
+> Estado em 2026-11-14 (rev. 3). Documento vivo: atualizar o estado de cada fase à medida que avança.
 
 ## 0. Ponto de partida
 
@@ -8,11 +8,12 @@
 - Motor: agentes como pacotes (`agent.yaml` + prompt + skills + scripts + templates + MCPs), dois tipos (`llm` e `script`), loader e runner (`core/`).
 - `memory_agent` + `change_alert_agent` (SQLite, histerese, Telegram) — 7 testes a passar.
 - Escala de classificação fixa (`core/ratings.py`) e contrato `Synthesis` (`core/schemas.py`).
-- `tools/probe_sources.py` — teste de cobertura das fontes por mercado (resultados na secção 3).
+- `tools/probe_sources.py`, `probe_fmp.py`, `probe_providers.py` — cobertura das fontes por mercado (secção 3).
+- Telegram: `@agentock_bot` configurado, mensagem de teste recebida.
+- Repositório git (`main`).
 
 **Existe mas nunca correu**
 - `news_4_hours_agent` (nunca foi executado contra a web).
-- Envio real por Telegram.
 - `universe_agent` — usa FMP; **a reescrever** sobre yfinance (Fase 8).
 
 **Decisões tomadas**
@@ -30,6 +31,9 @@
 | D9 | **Mercados: EUA, Europa, Japão, China (Xangai, Shenzhen), Hong Kong, Coreia (KOSPI, KOSDAQ)** | pedido do utilizador |
 | D10 | SEC EDGAR: User-Agent em `SEC_USER_AGENT` no `.env` (já preenchido) | exigência da SEC |
 | D11 | OpenDART: sim, chave em `DART_API_KEY` no `.env` | comunicados oficiais coreanos no 2.13 |
+| D13 | **IPOs: módulo próprio** — calendário, análise pré-IPO com classificação própria (Subscrever / Neutro / Evitar + confiança) e ciclo pós-IPO (estreia, fim do período de silêncio, lock-up, 1 ano) a alimentar os agentes normais | pedido do utilizador; uma empresa pré-IPO não tem cotação nem histórico, por isso não cabe no fluxo por ticker |
+| D14 | **Horários e feriados das bolsas vêm do `exchange_calendars`**, não de um `markets.yaml` manual | verificado: sessões em UTC com pausas de almoço e horário de verão, em todas as bolsas cobertas |
+| D15 | **akshare só como fonte secundária**, com backoff longo | o Eastmoney limitou o IP após poucos pedidos (o próprio aviso diz 5 min, até 40+ se repetido) |
 
 ---
 
@@ -74,6 +78,15 @@ TRIGGER (ticker | --universe)
 
 A ordem de execução é declarada num `flow.yaml` (agente + `depends_on`); o orquestrador corre cada camada em paralelo.
 
+**Fluxo de IPOs** (trigger próprio: `python flow.py --ipos [--days 30]` ou `--ipo "Nome"`):
+```
+I.1 ipo_calendar_agent ──► IPOs dos próximos N dias, nos mercados cobertos, acima do limiar de dimensão
+   └─ por IPO: I.2 pre_ipo_agent (prospeto, estrutura da oferta, financeiras, peers cotados,
+               janela de IPOs, notícias, debate bull/bear) ──► IpoSynthesis ──► memória ──► Telegram
+
+I.3 ipo_lifecycle_agent ──► para ações cotadas há < 1 ano: eventos pós-IPO ──► 2.14 calendário, 2.15 timing, 2.19
+```
+
 ---
 
 ## 3. Fontes de dados (grátis, sem chave)
@@ -98,7 +111,15 @@ A ordem de execução é declarada num `flow.yaml` (agente + `depends_on`); o or
 
 **akshare 1.20.44** — `stock_news_em("600519")` devolve notícias chinesas do Eastmoney com título, conteúdo, hora, fonte e link. A hora vem **em hora de Pequim, sem fuso** → normalizar para UTC no script.
 
-**GDELT DOC API** — respondeu **429 (Too Many Requests) logo ao primeiro pedido**. Fica como fonte secundária, com backoff; não é fiável como primária.
+**GDELT DOC API** — respondeu 429 ao primeiro pedido; **com 10 s de espera funcionou** (2 artigos em 24 h num sábado). Fonte secundária, com espaçamento.
+
+**Outras verificações da Fase 0 (2026-11-14)**
+- **Futuros e índices (yfinance, 5 min):** `ES=F`, `NQ=F` (quase 24 h: 1304 barras em 5 dias), `^GSPC`, `^STOXX50E`, `^GDAXI`, `^N225`, `^KS11`, `^HSI`, `000001.SS` ✅.
+- **`yf.Search` encontra cotações cruzadas** ✅: Alibaba → `BABA`, `9988.HK`; Samsung → `005930.KS`, GDR `SMSN.IL` (Londres); Toyota → `TM`, `7203.T`.
+- **`upgrades_downgrades` (EUA) traz preço-alvo por casa** ✅: `currentPriceTarget`, `priorPriceTarget`, `priceTargetAction`.
+- **`exchange_calendars` 4.13.2** ✅ — sessões em UTC com pausas e horário de verão (ver secção 4). Shenzhen não tem calendário próprio (`XSHE` não existe) → usar `XSHG`.
+- **`pandas-ta-classic` 0.9.0** ✅ — RSI e MACD calculados sobre AAPL.
+- **akshare, histórico A-share:** ❌ o Eastmoney limitou o IP temporariamente (ver D15).
 
 **FMP, plano grátis** — `tools/probe_fmp.py`, 2026-11-14 (250 chamadas/dia, 512 MB/30 dias)
 
@@ -130,7 +151,8 @@ Conclusão: a cobertura é por símbolo e não está garantida, mesmo em ADRs. O
 | Sem upgrades/downgrades por casa fora dos EUA | 2.16, 2.17 | EUA: FMP grades + yfinance; resto: web (LLM); akshare para ratings de casas chinesas (a verificar) |
 | Sem segmentação de receitas fora dos EUA | 2.11 | EUA: FMP; resto: LLM + web + receitas dos peers |
 | Sem lista de peers fora dos EUA | 2.12 | EUA/ADRs: FMP peers; resto: LLM propõe → screener do yfinance valida |
-| Sem horários das sessões via API | 2.5, 2.6 | `config/markets.yaml` (sessões, pausa de almoço) + fusos do FMP + `exchange_calendars` para feriados (a verificar) |
+| ~~Sem horários das sessões via API~~ | 2.5, 2.6 | ✅ resolvido: `exchange_calendars` (D14) |
+| Ações com pouco histórico (IPOs recentes) | 2.7, 2.8, 2.9, 2.18 | `profile_agent` marca `ipo_recente`; cada agente usa só o que o histórico permite (ex.: sem SMA 200 abaixo de 200 sessões) e o forecast alarga os intervalos |
 | Sem scores (Piotroski, Altman) nem DCF fora dos EUA | 2.7, 2.9 | EUA: FMP; resto: script próprio com pressupostos explícitos (validado contra o FMP nas ações dos EUA) |
 | FMP: 250 chamadas/dia | todos os que usam FMP | cache com TTL, contador diário no SQLite, fallback para yfinance ao esgotar |
 
@@ -140,7 +162,9 @@ Conclusão: a cobertura é por símbolo e não está garantida, mesmo em ADRs. O
 |---|---|---|
 | [yfinance](https://github.com/ranaroussi/yfinance) | fonte principal, todos os mercados | ✅ verificado |
 | [akshare](https://github.com/akfamily/akshare) | China/HK: notícias em chinês, dados A-share | ✅ notícias verificadas; o resto a verificar |
-| [pandas-ta-classic](https://pypi.org/project/pandas-ta-classic/) | indicadores técnicos (fork mantido; o `pandas-ta` original anuncia arquivo) | a verificar |
+| [pandas-ta-classic](https://pypi.org/project/pandas-ta-classic/) | indicadores técnicos (fork mantido; o `pandas-ta` original anuncia arquivo) | ✅ 0.9.0 |
+| exchange_calendars | horários, pausas e feriados de todas as bolsas | ✅ 4.13.2 |
+| Skills `bigdata-pre-ipo-analysis` e `bigdata-post-ipo-day1/14/179/365` (plugin bigdata-com já instalado) | **metodologia** para as skills de IPO: estrutura da oferta tirada do prospeto, "não divulgado" em vez de estimativas, comparáveis com múltiplos, janela de IPOs, lock-up com matemática de float/overhang | reescrita nas nossas skills; as tools Bigdata.com não são usadas. Diferença: as deles não classificam, as nossas sim (D13) |
 | [dart-fss](https://pypi.org/project/dart-fss/) / [opendart-fss-mcp](https://glama.ai/mcp/servers/hypn4/opendart-fss-mcp) | Coreia: comunicados oficiais (DART). Chave grátis OpenDART | a verificar; opcional |
 | [pykrx](https://github.com/sharebook-kr/pykrx) / [FinanceDataReader](https://github.com/FinanceData/FinanceDataReader) | Coreia: fluxos de investidores estrangeiros/institucionais (sinal forte neste mercado) | a verificar; opcional |
 | GDELT DOC API | notícias globais em 65 línguas | ⚠️ 429; secundária |
@@ -172,6 +196,7 @@ Cobertura **verificada** com `tools/probe_providers.py` em 2026-11-14 (sábado).
 **Cobertura por mercado depois disto — quantas fontes independentes de preço:**
 EUA 8 · Europa 2 (yfinance, EODHD) · HK 3 (yfinance, iTick, EODHD) · China A 5 (yfinance, iTick, EODHD, Tiingo, akshare) · Japão 2 (yfinance, iTick) · Coreia 3 (yfinance, iTick, EODHD).
 **Notícias:** EUA 4 fontes + web; China akshare + web; resto yfinance + EODHD + web.
+**Calendário de IPOs:** Finnhub `calendar/ipo` ✅ (17 IPOs nas semanas seguintes, com data, bolsa, intervalo de preço, nº de ações e valor; cobertura internacional a verificar) · Alpha Vantage `IPO_CALENDAR` ✅ (CSV, EUA) · FMP e EODHD ❌ (pagos) · China: akshare (a verificar) · HK, Coreia, Japão, Europa: web.
 
 **O que o router faz com isto (Fase 1)**
 - **Prioridade por dado e por mercado**, ex.: intraday EUA → Alpaca → Tiingo → yfinance; intraday Ásia → yfinance → iTick; notícias EUA → Finnhub + Alpaca + yfinance + web; EOD China → yfinance → Tiingo → EODHD; câmbios → Twelve Data → yfinance.
@@ -193,7 +218,18 @@ EUA 8 · Europa 2 (yfinance, EODHD) · HK 3 (yfinance, iTick, EODHD) · China A 
 | China (Xangai / Shenzhen) | .SS / .SZ | 09:30–11:30, 13:00–15:00 | Asia/Shanghai | limite diário ±10% (±20% STAR/ChiNext); ações A/H |
 | Hong Kong | .HK | 09:30–12:00, 13:00–16:00 | Asia/Hong_Kong | muitas cotações duplas com EUA e China |
 
-Horários e fusos vão para `config/markets.yaml` e são calculados com `zoneinfo` — as horas de verão mudam a sobreposição entre sessões ao longo do ano. **Confirmar estes horários na Fase 0** antes de os fixar.
+**Horários confirmados com `exchange_calendars` (D14)** — sessões em UTC:
+
+| Bolsa | Inverno (16-nov) | Verão (15-jul) | Pausa (UTC) |
+|---|---|---|---|
+| XNYS (Nova Iorque) | 14:30–21:00 | 13:30–20:00 | — |
+| XETR, XAMS, XLON, XSWX | 08:00–16:30 | 07:00–15:30 | — |
+| XTKS (Tóquio) | 00:00–06:30 | 00:00–06:30 | 02:30–03:30 |
+| XKRX (Coreia) | 00:00–06:30 | 00:00–06:30 | — |
+| XHKG (Hong Kong) | 01:30–08:00 | 01:30–08:00 | 04:00–05:00 |
+| XSHG (Xangai; usar também para Shenzhen) | 01:30–07:00 | 01:30–07:00 | 03:30–05:00 |
+
+A Ásia não muda de hora; a Europa e os EUA sim — por isso a sobreposição entre sessões muda ao longo do ano e é sempre calculada, nunca fixada.
 
 **O ciclo de 24 h que os agentes 2.5/2.6 exploram:**
 ```
@@ -220,14 +256,14 @@ Legenda — **Tipo:** S = script (sem LLM), L = LLM, S+L = script calcula e LLM 
 | # | Agente | Tipo | Fontes principais | Artefactos | Cache | Depende de |
 |---|---|---|---|---|---|---|
 | 0.1 | `universe_agent` | S | screener yf por região + FX | sc normalização USD/dedupe | 1 dia | — |
-| 0.2 | `profile_agent` **(novo)** | S | yf info/fast_info, yf Search (a verificar) | ref cross_listings.yaml, cfg markets.yaml | 7 dias | — |
+| 0.2 | `profile_agent` **(novo)** | S | yf info/fast_info, yf Search ✅ | ref cross_listings.yaml, exchange_calendars; marca `ipo_recente` | 7 dias | — |
 | 2.1 | `news_4_hours_agent` | L | WebSearch/WebFetch, yf news, akshare (China), GDELT | sk news-triage, sc check_window + dedupe, ref sources_by_market, tp | sempre fresco | 0.2 |
 | 2.2 | `news_24_hours_agent` | L | idem (herda `news_base`) | idem | 1 h | 0.2 |
 | 2.3 | `news_7_days_agent` | L | idem | idem | 6 h | 0.2 |
 | 2.4 | `news_30_days_agent` | L | idem | idem | 24 h | 0.2 |
-| 2.5a | `asia_lead_agent` **(novo)** | S | yf intraday: própria ação noutra bolsa, peers asiáticos, ^N225 ^KS11 ^HSI 000001.SS | sc session_map, cfg markets.yaml, ref proxies.yaml | 15 min | 0.2 |
+| 2.5a | `asia_lead_agent` **(novo)** | S | yf intraday: própria ação noutra bolsa, peers asiáticos, ^N225 ^KS11 ^HSI 000001.SS | sc session_map (exchange_calendars), ref proxies.yaml | 15 min | 0.2 |
 | 2.5 | `europe_lead_agent` | S | yf intraday: cotação europeia, peers europeus, ^STOXX50E ^GDAXI | idem | 15 min | 0.2 |
-| 2.6 | `us_lead_agent` | S | yf: fecho e after-hours dos EUA, ADR, ^GSPC ^IXIC, futuros ES=F NQ=F (a verificar) | idem | 15 min | 0.2 |
+| 2.6 | `us_lead_agent` | S | yf: fecho e after-hours dos EUA, ADR, ^GSPC ^IXIC, futuros ES=F NQ=F ✅ | idem | 15 min | 0.2 |
 | 2.7 | `health_momentum_agent` | S | yf demonstrações + info + EOD + índice local | sc scores (Piotroski, Altman, momentum) | 1 dia | 0.2 |
 | 2.8 | `technical_agent` | S+L | yf EOD + intraday | sc indicators (pandas-ta-classic), sk technical-reading | 1 dia | 0.2 |
 | 2.9 | `fundamental_agent` | S+L | yf demonstrações, info | sc valuation (DCF próprio, múltiplos vs peers), sk fundamental-framework | 1 dia | 0.2, 2.12 |
@@ -235,7 +271,7 @@ Legenda — **Tipo:** S = script (sem LLM), L = LLM, S+L = script calcula e LLM 
 | 2.11 | `market_share_agent` | S+L | web + receitas dos peers (yf) | sk, ref | 30 dias, por indústria | 0.2, 2.12 |
 | 2.12 | `competitors_agent` | S+L | LLM propõe peers → screener yf valida → script compara | sc comps, sub peer_validator | 1 dia, por indústria | 0.2 |
 | 2.13 | `relations_agent` | L | SEC, DART, CNINFO/akshare, web | sk, ref filings_by_market | 30 dias | 0.2 |
-| 2.14 | `calendar_agent` | S | yf calendar, earnings dates | — | 1 dia | 0.2 |
+| 2.14 | `calendar_agent` | S | yf calendar, earnings dates; eventos pós-IPO de I.3 | — | 1 dia | 0.2, I.3 |
 | 2.15 | `timing_agent` | L | 2.5a, 2.5, 2.6, 2.8, 2.10, 2.14 | sk timing-rules (incl. limites diários) | por execução | camada 2 |
 | 2.16 | `analysts_agent` | S (+L fora dos EUA) | yf recommendations; upgrades_downgrades (EUA); web | — | 1 dia | 0.2 |
 | 2.17 | `price_targets_agent` | S (+L fora dos EUA) | yf analyst_price_targets (atual/mín/máx/média/mediana); alvos por casa (EUA); web | — | 1 dia | 0.2 |
@@ -244,6 +280,9 @@ Legenda — **Tipo:** S = script (sem LLM), L = LLM, S+L = script calcula e LLM 
 | 3 | `memory_agent` ✅ | S | SQLite | — | — | 2.19 |
 | 4 | `change_alert_agent` ✅ | S | SQLite, Telegram | sc diff de razões | — | 3 |
 | — | `eval_agent` **(novo)** | S | histórico + EOD | tp relatório | — | 3 |
+| I.1 | `ipo_calendar_agent` **(novo)** | S | Finnhub `calendar/ipo` ✅, Alpha Vantage `IPO_CALENDAR` ✅, akshare (China, a verificar), web (HK, Coreia, Japão, Europa) | sc normalização + dedupe + limiar de dimensão | 12 h | — |
+| I.2 | `pre_ipo_agent` **(novo)** | L | prospeto (SEC S-1/F-1 via EDGAR, DART, HKEXnews, CNINFO), notícias, peers cotados (2.12), desempenho dos IPOs recentes do setor | sk pre-ipo-analysis, sc deal_math, sub bull + bear + juiz (os do 2.19) | 1 dia | I.1 |
+| I.3 | `ipo_lifecycle_agent` **(novo)** | S | prospeto (lock-up), yf (data de estreia, histórico), calendário de resultados | sk post-ipo-lifecycle | 1 dia | 0.2 |
 
 **Ações dos EUA (e ADRs cobertos):** o router de dados usa primeiro o FMP em 0.2 (peers), 2.7 (financial-scores), 2.9 (métricas, rácios, DCF, estimativas), 2.11 (segmentação de receitas), 2.12 (peers), 2.14 (histórico de resultados com surpresas), 2.16 (grades por casa) e 2.17 (price-target summary). Nos restantes mercados, e se o FMP falhar, usa as fontes da tabela.
 
@@ -251,12 +290,15 @@ Legenda — **Tipo:** S = script (sem LLM), L = LLM, S+L = script calcula e LLM 
 
 - **0.2 profile_agent (novo):** quase todos os agentes precisam de saber a bolsa, o mercado, a moeda, o setor e as outras cotações (ADR, A/H, GDR). Resolve-se uma vez e passa a ser o contexto do resto. Para as outras cotações: tabela manual dos pares conhecidos (`cross_listings.yaml`) + pesquisa do yfinance.
 - **2.1–2.4 notícias:** um pacote base `agents/_shared/news_base/` (prompt, skill, scripts, schema). Os quatro agentes são `agent.yaml` finos com `extends: news_base` e a sua janela/TTL. Mantêm-se separados porque cada janela tem estratégia diferente: 4 h = notícias de última hora, sempre fresco; 30 dias = só os acontecimentos marcantes, em cache 24 h.
-- **2.5a / 2.5 / 2.6 sinais entre sessões:** um motor genérico (`session_map`) usa `markets.yaml` para saber, no momento do trigger, que bolsas estão abertas ou fechadas em relação à bolsa principal da ação. Sinais por ordem de força: (1) a própria ação noutra bolsa, (2) futuros do índice, (3) peers do setor na sessão que lidera, (4) índice dessa sessão. Saída: variação desde o fecho da bolsa principal, por proxy, com peso e confiança. Sem proxy relevante → `applicable: false`, sem ruído.
+- **2.5a / 2.5 / 2.6 sinais entre sessões:** um motor genérico (`session_map`) usa o `exchange_calendars` para saber, no momento do trigger, que bolsas estão abertas ou fechadas em relação à bolsa principal da ação. Sinais por ordem de força: (1) a própria ação noutra bolsa, (2) futuros do índice, (3) peers do setor na sessão que lidera, (4) índice dessa sessão. Saída: variação desde o fecho da bolsa principal, por proxy, com peso e confiança. Sem proxy relevante → `applicable: false`, sem ruído.
 - **2.8 técnica:** o script calcula SMA 50/200, EMA, RSI, MACD, ATR, Bollinger, volume relativo, suportes e resistências (pivots), e marca proximidade aos limites diários (China, Coreia). O LLM só lê o JSON.
 - **2.12 concorrentes:** sem lista de peers na fonte, o LLM propõe e um subagente valida com o screener (mesma indústria, dimensão comparável) antes de o script montar a tabela de comparáveis.
 - **2.18 forecast:** cenários e não preço pontual — bear/base/bull com intervalos a 1, 3 e 12 meses. O intervalo estatístico vem de script (volatilidade histórica); a ancoragem vem dos preços-alvo e do DCF.
 - **2.19 classificação:** v1 = um só LLM com rubrica (linha de base). v2 = subagente bull + subagente bear + juiz. Um hook valida que os números citados nas razões existem nos inputs.
 - **4 change_alert_agent:** a mensagem de Telegram passa a incluir o que mudou nas razões face à classificação anterior (diff por código, ver D6).
+- **I.1 ipo_calendar_agent:** IPOs dos próximos N dias, nos mercados cobertos, acima de um limiar de dimensão (configurável, ex.: ≥ 1 mil M USD). Exclui SPACs por omissão (aparecem no calendário, ex.: "Acquisition Corp."). Alerta Telegram quando entra um IPO novo acima do limiar.
+- **I.2 pre_ipo_agent:** metodologia adaptada das skills bigdata (secção 3.3): estrutura da oferta **do prospeto** (intervalo de preço, ações primárias/secundárias, greenshoe, subscritores, lock-up, classes de ações, uso dos fundos); "não divulgado" em vez de estimar; o script `deal_math` calcula a valorização implícita (preço × ações pós-oferta), o free float e os múltiplos vs peers cotados; janela de IPOs = desempenho dos IPOs recentes do setor. Classificação própria **Subscrever / Neutro / Evitar** + confiança, com debate bull/bear. Gravada na memória com tipo `ipo`.
+- **I.3 ipo_lifecycle_agent:** para ações cotadas há menos de 1 ano, calcula as datas que mexem com o preço: estreia, fim do período de silêncio (~25 dias nos EUA → início da cobertura de analistas), primeiros resultados, **fim do lock-up tirado do prospeto** (nunca assumir 180 dias; atenção a libertações antecipadas), 1 ano. Para o lock-up: ações libertadas, aumento do free float, dias de negociação para absorver (ações libertadas / volume médio). Alerta Telegram 7 dias antes de um fim de lock-up numa ação do histórico.
 
 ---
 
@@ -270,12 +312,13 @@ Ordem pensada para ter **uma ação a dar classificação de ponta a ponta o mai
 | ~~Cobertura de fontes por mercado~~ | ✅ feito (secção 3.1) |
 | ~~Cobertura do plano FMP~~ | ✅ feito (secção 3.1) |
 | ~~Chaves dos fornecedores complementares + `probe_providers.py`~~ | ✅ feito (secção 3.4); falta só GuruFocus |
-| Repetir `all-exchange-market-hours` num dia útil | saber se devolve horários das sessões ou só estado |
-| Verificar o resto: futuros (`ES=F`, `NQ=F`), `yf.Search`, campos de alvo em `upgrades_downgrades`, `exchange_calendars` (XSHG, XSHE, XHKG, XKRX, XTKS), GDELT com backoff, akshare para dados A-share além das notícias | `docs/coverage.md` atualizado |
-| Confirmar horários das bolsas e preencher `config/markets.yaml` | sobreposições de sessão corretas em inverno e verão |
-| `git init` + primeiro commit | repositório com `.gitignore` (já existe) |
+| ~~Futuros, `yf.Search`, alvos em `upgrades_downgrades`, `exchange_calendars`, pandas-ta-classic, GDELT~~ | ✅ feito (secção 3.1) |
+| ~~Horários das bolsas~~ | ✅ `exchange_calendars` (D14, secção 4); deixa de ser preciso o `all-exchange-market-hours` do FMP |
+| ~~Fontes de calendário de IPOs~~ | ✅ Finnhub e Alpha Vantage (secção 3.4) |
+| akshare para dados A-share além das notícias | repetir depois do limite do Eastmoney passar (D15) |
+| ~~`git init` + primeiro commit~~ | ✅ |
 | ~~Carregar `.env` (`python-dotenv`)~~ | ✅ `core/env.py` |
-| Bot Telegram (@BotFather) + `tools/telegram_setup.py` (script feito) | mensagem recebida no telemóvel |
+| ~~Bot Telegram~~ | ✅ `@agentock_bot`, mensagem de teste recebida |
 | Primeira execução real do `news_4_hours_agent` (AAPL e 005930.KS) | JSON válido; skill carregada; `check_window` executado em Windows; custo registado |
 
 ### Fase 1 — Motor
@@ -298,8 +341,8 @@ Agentes: 0.2 profile, 2.1 news_4h, 2.8 técnica, 2.14 calendário, 2.16 analista
 **Aceitação M1:** `python flow.py AAPL` e `python flow.py 005930.KS` produzem uma classificação gravada; uma segunda execução com mudança dispara Telegram; custo e tempo por agente visíveis.
 
 ### Fase 3 — Dados restantes
-2.5a asia_lead, 2.5 europe_lead, 2.6 us_lead, 2.7 health_momentum, 2.9 fundamental.
-**Aceitação:** testes com fixtures; corre para um ticker de cada mercado da secção 4; `applicable: false` quando não há proxy; pares A/H e ADR detetados.
+2.5a asia_lead, 2.5 europe_lead, 2.6 us_lead, 2.7 health_momentum, 2.9 fundamental, **I.1 ipo_calendar, I.3 ipo_lifecycle** (scripts; I.3 alimenta o 2.14).
+**Aceitação:** testes com fixtures; corre para um ticker de cada mercado da secção 4; `applicable: false` quando não há proxy; pares A/H e ADR detetados; `python flow.py --ipos` lista os IPOs dos próximos 30 dias sem SPACs; uma ação cotada há menos de 1 ano mostra as datas pós-IPO no calendário.
 
 ### Fase 4 — Notícias completas e sentimento
 Refatorar para `news_base`; 2.2, 2.3, 2.4; pesquisa multilíngue; script de deduplicação; 2.10 sentimento.
@@ -313,8 +356,12 @@ Refatorar para `news_base`; 2.2, 2.3, 2.4; pesquisa multilíngue; script de dedu
 2.15 timing, 2.18 forecast, 2.19 v2 (debate bull/bear + juiz), hook anti-alucinação, guardrail "análise, não aconselhamento personalizado", diff de razões no alerta.
 **Aceitação:** as razões citam só números presentes nos inputs; a classificação inclui confiança e o que falhou a montante.
 
+### Fase 6b — IPOs
+I.2 pre_ipo_agent (skill pre-ipo-analysis, script deal_math, debate reutilizado do 2.19); classificação Subscrever / Neutro / Evitar gravada na memória (tipo `ipo`); alertas Telegram de IPO novo acima do limiar e de fim de lock-up a 7 dias; trigger `python flow.py --ipo "Nome"`.
+**Aceitação:** para um IPO real próximo, a análise tira a estrutura da oferta do prospeto, escreve "não divulgado" onde falta, e a valorização implícita bate com preço × ações pós-oferta.
+
 ### Fase 7 — Avaliação
-`python flow.py --backfill` preenche retornos a 1, 7 e 30 dias; `eval_agent` gera relatório de acerto por classificação, por nível de confiança, por mercado e por versão (v1 vs v2), contra o índice local.
+`python flow.py --backfill` preenche retornos a 1, 7 e 30 dias; `eval_agent` gera relatório de acerto por classificação, por nível de confiança, por mercado e por versão (v1 vs v2), contra o índice local. **IPOs:** classificação vs retorno desde o preço do IPO até ao fecho do dia 1, dia 30 e dia 180.
 **Aceitação:** relatório com N ≥ 30 classificações avaliadas. Sem isto não se sabe se o sistema vale mais que o acaso.
 
 ### Fase 8 — Universo e escala
@@ -351,9 +398,12 @@ Reescrever o `universe_agent` sobre o screener do yfinance (por região, convers
 | Custo com 500 ações | cache por âmbito, scripts em vez de LLM, estimativa antes de correr |
 | Classificação oscilante | histerese já implementada (D6) |
 | Tool Bash do SDK em Windows | validar na Fase 0 (execução real) |
+| akshare/Eastmoney limita o IP | fonte secundária, backoff longo, nunca primária (D15) |
+| Calendário de IPOs fora dos EUA fraco nas APIs grátis | web (LLM) com fontes oficiais (HKEX, KIND, JPX, CNINFO) na skill; medir a cobertura na Fase 6b |
+| Dados do prospeto mal extraídos | `deal_math` confere a consistência (valorização = preço × ações pós-oferta); "não divulgado" em vez de estimar |
 
 ---
 
 ## 9. Decisões em aberto
 
-Nenhuma de momento. Pendências do utilizador: criar o bot Telegram (`python tools/telegram_setup.py`) e registar a chave OpenDART.
+Nenhuma de momento. Pendências do utilizador: chave OpenDART (`DART_API_KEY`); token GuruFocus só se houver Premium.

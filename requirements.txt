@@ -4,3 +4,5 @@ pyyaml
 python-dotenv
 yfinance==1.8.0
 akshare==1.20.44
+exchange_calendars==4.13.2
+pandas-ta-classic==0.9.0
