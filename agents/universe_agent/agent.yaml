@@ -1,0 +1,4 @@
+name: universe_agent
+kind: script
+description: Identifica as ~500 maiores empresas do mundo por market cap (todos os mercados).
+inputs: []   # opcionais: top_n (500), refresh (False)

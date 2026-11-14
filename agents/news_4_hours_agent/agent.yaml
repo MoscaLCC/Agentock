@@ -1,0 +1,25 @@
+name: news_4_hours_agent
+description: Recebe um ticker e procura na web notícias das últimas N horas sobre essa ação.
+model: null            # null = default do SDK; ex: claude-sonnet-5-5
+max_turns: 25
+
+inputs:                # variáveis disponíveis em prompt.md / task.md como $nome
+  - ticker
+  - hours
+
+tools:                 # tools built-in
+  - WebSearch
+  - WebFetch
+  - Read
+  - Skill              # ativa as skills em .claude/skills/
+bash:                  # scripts que o agente pode executar (Bash restrito)
+  - "python scripts/*"
+
+mcp_servers: {}        # MCPs deste agente (stdio/http/sse); suporta ${ENV_VAR}. Exemplo:
+# mcp_servers:
+#   fmp:
+#     type: http
+#     url: https://example.com/mcp
+#     headers: { Authorization: "Bearer ${FMP_API_KEY}" }
+
+output: schema.py:NewsReport   # ficheiro:Classe pydantic dentro desta pasta

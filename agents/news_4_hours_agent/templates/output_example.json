@@ -1,0 +1,17 @@
+{
+  "ticker": "AAPL",
+  "company": "Apple Inc.",
+  "searched_at": "2026-11-14 12:00 UTC",
+  "window_hours": 4,
+  "items": [
+    {
+      "title": "Exemplo de título",
+      "source": "Reuters",
+      "url": "https://example.com/artigo",
+      "published_at": "2026-11-14T10:15:00Z",
+      "summary": "Resumo em 1-2 frases.",
+      "category": "earnings",
+      "relevance": 5
+    }
+  ]
+}

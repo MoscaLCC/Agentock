@@ -1,0 +1,6 @@
+claude-agent-sdk
+pydantic
+pyyaml
+python-dotenv
+yfinance==1.8.0
+akshare==1.20.44

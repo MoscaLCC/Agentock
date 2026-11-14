@@ -1,0 +1,4 @@
+name: memory_agent
+kind: script
+description: Gestor de memória — grava cada classificação (histórico) em SQLite e serve o histórico.
+inputs: [synthesis]

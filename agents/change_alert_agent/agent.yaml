@@ -1,0 +1,4 @@
+name: change_alert_agent
+kind: script
+description: Deteta alteração de estado (regras com histerese) e notifica por Telegram.
+inputs: [synthesis]
