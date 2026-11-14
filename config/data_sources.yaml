@@ -1,0 +1,84 @@
+# Router de dados: fornecedores, quotas e prioridades por dado e por mercado.
+# Mercados: US, EU, JP, HK, CN, KR (ver core/data/markets.py). "default" aplica-se aos restantes.
+# Quotas ligeiramente abaixo dos limites reais (docs/PLANO.md, secção 3.4).
+
+providers:
+  yfinance:     {limits: {per_minute: 60}}
+  fmp:          {env: [FMP_API_KEY], limits: {per_day: 240}}
+  finnhub:      {env: [FINNHUB_API_KEY], limits: {per_minute: 55}}
+  alpaca:       {env: [ALPACA_API_KEY_ID, ALPACA_API_SECRET_KEY], limits: {per_minute: 180}}
+  tiingo:       {env: [TIINGO_API_KEY], limits: {per_hour: 45, per_day: 950}}
+  itick:        {env: [ITICK_API_KEY], limits: {per_minute: 4}}
+  eodhd:        {env: [EODHD_API_KEY], limits: {per_day: 18}}
+  twelvedata:   {env: [TWELVEDATA_API_KEY], limits: {per_minute: 7, per_day: 780}}
+  alphavantage: {env: [ALPHAVANTAGE_API_KEY], limits: {per_minute: 4, per_day: 23}}
+  marketstack:  {env: [MARKETSTACK_API_KEY], limits: {per_month: 90}}
+  akshare:      {limits: {per_minute: 2}}
+
+# Ordem = prioridade. Para capacidades em "merge", todos os fornecedores da lista contribuem.
+routes:
+  quote:
+    US: [alpaca, finnhub, yfinance, fmp, twelvedata]
+    HK: [yfinance, itick]
+    CN: [yfinance, itick]
+    KR: [yfinance, itick]
+    JP: [yfinance, itick]
+    default: [yfinance]
+  eod:
+    US: [yfinance, tiingo, fmp, eodhd, marketstack, alphavantage]
+    CN: [yfinance, tiingo, eodhd, alphavantage]
+    default: [yfinance, eodhd]
+  intraday:
+    US: [yfinance, tiingo, alpaca]   # alpaca/tiingo = só IEX: candles esparsos; ficam como recurso
+    HK: [yfinance, itick]
+    default: [yfinance]
+  profile:
+    US: [fmp, yfinance]
+    default: [yfinance]
+  news:
+    US: [finnhub, alpaca, yfinance]
+    CN: [yfinance, akshare]
+    default: [yfinance, eodhd]
+  analyst_recs:
+    US: [finnhub, yfinance]
+    default: [yfinance]
+  price_targets:
+    US: [fmp, yfinance]
+    default: [yfinance]
+  upgrades:
+    US: [yfinance, fmp]
+    default: [yfinance]
+  peers:
+    US: [fmp]
+    default: []
+  calendar:
+    default: [yfinance]
+  search:
+    default: [yfinance]
+  fx:
+    default: [twelvedata, yfinance]
+  ipo_calendar:
+    default: [finnhub, alphavantage]
+
+merge: [news, ipo_calendar]
+
+# Tempo de vida da cache, em segundos
+ttl:
+  quote: 60
+  intraday: 300
+  eod: 21600
+  profile: 604800
+  news: 600
+  analyst_recs: 86400
+  price_targets: 86400
+  upgrades: 86400
+  peers: 604800
+  calendar: 86400
+  search: 604800
+  fx: 3600
+  ipo_calendar: 43200
+
+# Quanto tempo um fornecedor fica "bloqueado" para um símbolo/capacidade depois de 401/402/403
+blocked_days: 7
+# Pausa a um fornecedor depois de um 429, em segundos
+cooldown_seconds: 120

@@ -1,6 +1,6 @@
 # Plano de implementação — Agentock
 
-> Estado em 2026-11-14 (rev. 3). Documento vivo: atualizar o estado de cada fase à medida que avança.
+> Estado em 2026-11-14 (rev. 4 — Fases 0 e 1 concluídas). Documento vivo: atualizar o estado de cada fase à medida que avança.
 
 ## 0. Ponto de partida
 
@@ -12,8 +12,10 @@
 - Telegram: `@agentock_bot` configurado, mensagem de teste recebida.
 - Repositório git (`main`).
 
+- Motor da Fase 1: router de dados com 11 fornecedores, orquestrador DAG, cache, hooks, tools `market` — 29 testes.
+- `news_4_hours_agent` executado com sucesso (APIs + web).
+
 **Existe mas nunca correu**
-- `news_4_hours_agent` (nunca foi executado contra a web).
 - `universe_agent` — usa FMP; **a reescrever** sobre yfinance (Fase 8).
 
 **Decisões tomadas**
@@ -319,21 +321,28 @@ Ordem pensada para ter **uma ação a dar classificação de ponta a ponta o mai
 | ~~`git init` + primeiro commit~~ | ✅ |
 | ~~Carregar `.env` (`python-dotenv`)~~ | ✅ `core/env.py` |
 | ~~Bot Telegram~~ | ✅ `@agentock_bot`, mensagem de teste recebida |
-| Primeira execução real do `news_4_hours_agent` (AAPL e 005930.KS) | JSON válido; skill carregada; `check_window` executado em Windows; custo registado |
+| ~~Primeira execução real do `news_4_hours_agent`~~ | ✅ AAPL 4 h ao sábado: 0 notícias (não inventa); Samsung 48 h: 2 notícias reais, incluindo fonte coreana; AAPL 48 h via orquestrador: 9 notícias, $0,31, 42 s |
 
 ### Fase 1 — Motor
 | Tarefa | Aceitação |
 |---|---|
-| `core/data/`: cliente de dados por fonte (yfinance, akshare, FMP) com retries, limite de pedidos, cache SQLite com TTL, normalização de símbolos e de fusos | testes com respostas gravadas (fixtures) |
-| `core/data/providers/<nome>.py`: um módulo por fornecedor que declara capacidades (dado × mercado) e quotas | adicionar um fornecedor não mexe nos agentes |
-| `core/data/router.py`: prioridade por dado e mercado (secção 3.4); livro de quotas no SQLite (minuto/dia/mês); memória de 402/403 por símbolo/endpoint; validação cruzada de preços | uma ação europeia nunca gasta quota de fornecedores só-EUA; ao esgotar um fornecedor passa ao seguinte; divergência de preço > 1% é sinalizada |
-| Servidor MCP in-process `market` (`create_sdk_mcp_server`): expõe o cliente aos agentes LLM; os agentes script chamam o mesmo cliente diretamente | um agente LLM chama `mcp__market__quote` |
-| `agent.yaml` alargado: `extends`, `model`, `effort`, `max_budget_usd`, `cache_ttl`, `cache_scope` (ticker / indústria / global), `hooks`, `subagents` | testes do loader |
-| Cache de outputs no runner (agente + âmbito + hash dos inputs) | segunda execução dentro do TTL não chama o LLM |
-| `core/hooks.py`: registo de cada tool call (`PostToolUse`) em `data/logs/<run_id>.jsonl`; bloqueio de domínios (`PreToolUse`) | log gerado; domínio bloqueado é recusado |
-| Orquestrador DAG a partir de `flow.yaml`: camadas em paralelo, timeout por agente, `AgentResult(status, output, error, cost, duration)` | `python flow.py AAPL --dry-run` mostra o DAG |
-| Tabela `agent_outputs` (run_id, agente, ticker, JSON, custo, duração) | cada execução fica reconstituível |
-| CLI: `--only <agente>`, `--no-cache`, `--dry-run` | — |
+**✅ Concluída em 2026-11-14.** 29 testes unitários + teste real (`tools/smoke_data.py`) + execução LLM ponta a ponta.
+
+| Tarefa | Estado |
+|---|---|
+| `core/data/`: fornecedores (`providers/yfinance_p.py`, `providers/keyed.py` — 11 fornecedores), `http.py` (retries, classificação 401/402/403/404/429 e erros no corpo), `store.py` (cache com TTL + livro de quotas em `data/cache.db`), `markets.py` | ✅ 27/27 fornecedor×capacidade a funcionar no teste real |
+| `config/data_sources.yaml`: quotas por fornecedor, rotas por dado × mercado, TTL, capacidades em "merge" | ✅ editável sem tocar em código |
+| `core/data/router.py`: prioridade, cache, quotas (minuto/hora/dia/mês), memória de bloqueios (7 dias), pausa após 429, merge+dedupe de notícias e IPOs, `cross_check_close` | ✅ fechos AAPL/Moutai/Samsung batem a 0,0% entre 2 fontes |
+| Servidor MCP in-process `market` (`core/market_tools.py`, 13 tools) | ✅ o `news_4_hours_agent` chamou `mcp__market__news` e `profile` numa execução real |
+| `agent.yaml` alargado: `extends`, `kind`, `model`, `effort`, `max_budget_usd`, `market_tools`, `hooks`, `subagents`, `cache_ttl`, **`cache_key`** (lista de inputs que definem a chave — substitui o `cache_scope` previsto: para cache por indústria basta `cache_key: [industry]`) | ✅ testes do loader (herança, ficheiros do pai, herança circular) |
+| Cache de outputs no runner | ✅ teste: 2.ª execução vem da cache; `--no-cache` ignora |
+| `core/hooks.py`: `log_tools` (sempre ligado, `data/logs/<run_id>.jsonl`), `block_domains`, `mcp_quota` | ✅ log real gerado; domínio bloqueado recusado em teste |
+| Orquestrador DAG (`core/orchestrator.py` + `flow.yaml`): dependências deduzidas das referências `$nó.campo`, camadas em paralelo, timeout por nó, falha isolada | ✅ testes (ordem, ciclo, timeout, falha isolada) |
+| Tabela `agent_outputs` (run_id, nó, agente, ticker, output, custo, duração, turnos, cache) | ✅ |
+| CLI: `--only`, `--no-cache`, `--dry-run`, `--flow` | ✅ |
+| Corrigido: `RuntimeError: aclose()` (o runner fazia `return` dentro do `async for`) | ✅ |
+
+Notas: os testes do router usam fornecedores falsos em vez de respostas gravadas; a cobertura real fica no `tools/smoke_data.py`. A Alpaca e o Tiingo só têm o feed IEX (candles intraday esparsos), por isso o yfinance passou a primeiro no intraday dos EUA; a Alpaca fica primeira na cotação em tempo real.
 
 ### Fase 2 — Fatia vertical (marco M1)
 Agentes: 0.2 profile, 2.1 news_4h, 2.8 técnica, 2.14 calendário, 2.16 analistas, 2.17 preços-alvo, 2.19 classificação v1 → memória → alerta.

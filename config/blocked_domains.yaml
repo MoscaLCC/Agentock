@@ -1,0 +1,4 @@
+# Domínios que os agentes não podem abrir com WebFetch (hook block_domains).
+# Útil para fontes de baixa qualidade, spam de SEO ou sites que bloqueiam leitura automática.
+domains:
+  - gurufocus.com   # devolve 403 a leitura automática; usar o MCP oficial

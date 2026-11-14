@@ -1,0 +1,11 @@
+# Fluxos de agentes (core/orchestrator.py).
+# Inputs: $param (do trigger: ticker, hours, ...) · $nó (output de outro nó) · $nó.campo
+# As dependências deduzem-se das referências; `after: [nó]` força ordem sem passar dados.
+# A Fase 2 acrescenta: profile, técnica, calendário, analistas, preços-alvo, classificação, memória, alerta.
+
+flows:
+  ticker:
+    news_4h:
+      agent: news_4_hours_agent
+      inputs: {ticker: $ticker, hours: $hours}
+      timeout: 900

@@ -26,6 +26,16 @@ CREATE TABLE IF NOT EXISTS alerts (
     old_rating INTEGER, new_rating INTEGER, kind TEXT,
     message TEXT, sent INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS agent_outputs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL, node TEXT, agent TEXT NOT NULL, ticker TEXT, ts TEXT NOT NULL,
+    status TEXT NOT NULL, cached INTEGER NOT NULL DEFAULT 0,
+    output TEXT, error TEXT, cost_usd REAL, duration_ms INTEGER, turns INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_outputs_run ON agent_outputs(run_id);
+CREATE TABLE IF NOT EXISTS agent_cache (
+    key TEXT PRIMARY KEY, agent TEXT, output TEXT, created REAL, expires REAL
+);
 """
 
 
@@ -51,6 +61,29 @@ def save_run(conn, *, ticker, rating: int, confidence, price, reasons, payload) 
     )
     conn.commit()
     return cur.lastrowid
+
+
+def save_agent_output(conn, *, run_id, node, agent, ticker, status, cached, output, error, cost_usd,
+                      duration_ms, turns) -> None:
+    conn.execute(
+        "INSERT INTO agent_outputs(run_id, node, agent, ticker, ts, status, cached, output, error, cost_usd,"
+        " duration_ms, turns) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        (run_id, node, agent, ticker, now(), status, int(cached), output, error, cost_usd, duration_ms, turns),
+    )
+    conn.commit()
+
+
+def agent_cache_get(conn, key: str):
+    import time
+    row = conn.execute("SELECT output FROM agent_cache WHERE key=? AND expires>?", (key, time.time())).fetchone()
+    return row["output"] if row else None
+
+
+def agent_cache_set(conn, key: str, agent: str, output: str, ttl: int) -> None:
+    import time
+    t = time.time()
+    conn.execute("INSERT OR REPLACE INTO agent_cache VALUES (?,?,?,?,?)", (key, agent, output, t, t + ttl))
+    conn.commit()
 
 
 def history(conn, ticker: str, limit: int = 20) -> list[sqlite3.Row]:
