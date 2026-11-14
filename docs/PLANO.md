@@ -43,7 +43,9 @@ python flow.py --ipo "Nome da empresa"
 python flow.py --universe --top 50      # universo + estimativa de custo; --yes para correr; --parallel N; --resume
 python flow.py --backfill && python flow.py --eval
 python flow.py --report AAPL            # data/reports/AAPL_historico.html
-python tools/telegram_bot.py            # bot: /run AAPL, /status AAPL, /history AAPL, /ipos
+python tools/telegram_bot.py            # bot: /run AAPL, /detalhe_AAPL, /ipo_ANT, /ipos, /status, /history
+tools\start_bot.cmd                     # arranca o bot sem janela (registo em data\logs\bot.log)
+powershell -ExecutionPolicy Bypass -File tools\install_bot_task.ps1   # bot sempre ligado (tarefa ao iniciar sessão)
 ```
 Custo equivalente observado (o que custaria em créditos da API; com a subscrição não é faturado, mas conta para os limites de utilização): fluxo completo de uma ação ~2 USD sem cache (classificação v2 com dossier completo: 0,71 USD); análise pré-IPO 1,1–1,4 USD. A estimativa do `--universe` usa a média das execuções completas gravadas.
 

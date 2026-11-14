@@ -13,8 +13,10 @@ import asyncio
 import json
 import os
 import sys
+import traceback
 import urllib.parse
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -166,7 +168,25 @@ class Bot:
             return await self.send("Sem IPOs relevantes nos próximos 30 dias.", html=False)
         await self.send(M.new_ipos(ipos).replace("Novos IPOs no calendário", "IPOs nos próximos 30 dias"))
 
+    async def set_menu(self):
+        """Lista de comandos no botão "Menu" do Telegram."""
+        cmds = [{"command": "run", "description": "Análise completa: /run AAPL"},
+                {"command": "ipos", "description": "IPOs dos próximos 30 dias"},
+                {"command": "status", "description": "Última classificação: /status AAPL"},
+                {"command": "history", "description": "Histórico: /history AAPL"},
+                {"command": "ajuda", "description": "Comandos disponíveis"}]
+        await asyncio.to_thread(self._call, "setMyCommands", commands=json.dumps(cmds))
+
     async def handle(self, text: str):
+        print(f"[{datetime.now():%H:%M:%S}] comando: {text}", flush=True)
+        try:
+            await self._handle(text)
+            print(f"[{datetime.now():%H:%M:%S}] respondido: {text}", flush=True)
+        except Exception as e:  # sem isto, um erro numa tarefa perdia-se em silêncio
+            traceback.print_exc()
+            await self.send(f"Erro ao processar {text}: {type(e).__name__}: {str(e)[:300]}", html=False)
+
+    async def _handle(self, text: str):
         parts = text.strip().split()
         cmd, args = parts[0].split("@")[0], parts[1:]
         low = cmd.lower()
@@ -186,17 +206,21 @@ class Bot:
             await self.cmd_status(args, limit=10)
         elif low == "/ipos":
             await self.cmd_ipos(args)
-        else:
+        else:  # /ajuda, /start, ou comando desconhecido
             await self.send(HELP, html=False)
 
     async def loop(self):
         offset = 0
-        print("Bot a correr. Ctrl+C para parar.")
+        try:
+            await self.set_menu()
+        except Exception as e:
+            print("aviso: não consegui registar o menu de comandos:", e, flush=True)
+        print(f"[{datetime.now():%H:%M:%S}] Bot a correr. Ctrl+C para parar.", flush=True)
         while True:
             try:
                 ups = await self.updates(offset)
             except Exception as e:  # rede: tenta de novo
-                print("erro getUpdates:", e)
+                print("erro getUpdates:", e, flush=True)
                 await asyncio.sleep(5)
                 continue
             for u in ups:
