@@ -3,6 +3,16 @@ from datetime import date, timedelta
 from .base import Provider, bars_from_df, now_iso, num, pct, unix_to_iso
 
 
+def trailing_yield(dividends, price: float | None, now=None) -> float | None:
+    """Dividend yield (%) com base nos dividendos pagos nos últimos 365 dias. None se não houver histórico."""
+    import pandas as pd
+    if dividends is None or len(dividends) == 0 or not price:
+        return None
+    now = now or pd.Timestamp.now(tz=dividends.index.tz)
+    paid = float(dividends[dividends.index >= now - pd.Timedelta(days=365)].sum())
+    return round(paid / price * 100, 2)
+
+
 class YFinance(Provider):
     name = "yfinance"
     capabilities = frozenset({"quote", "eod", "intraday", "profile", "news", "analyst_recs", "price_targets",
@@ -50,6 +60,15 @@ class YFinance(Provider):
             out[stmt] = block
         info = t.info or {}
         out["ratios"] = {k: num(info.get(v)) for k, v in self.INFO.items()}
+        # o 'dividendYield' do Yahoo vem por vezes errado (Samsung: 8,93% vs ~3% efetivamente pago em 12 meses):
+        # usa o dividendo pago nos últimos 12 meses; o valor do Yahoo fica só para comparação
+        try:
+            ty = trailing_yield(t.dividends, num(info.get("currentPrice")) or num(t.fast_info["lastPrice"]))
+        except Exception:
+            ty = None
+        if ty is not None:
+            out["ratios"]["dividend_yield_yahoo_pct"] = out["ratios"]["dividend_yield_pct"]
+            out["ratios"]["dividend_yield_pct"] = ty
         out["shares"] = {"outstanding": num(info.get("sharesOutstanding")), "float": num(info.get("floatShares"))}
         out["currency"] = info.get("financialCurrency") or info.get("currency")
         return out

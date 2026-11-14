@@ -111,5 +111,16 @@ class SectionTests(unittest.TestCase):
         self.assertIn("Bloomberg", sections.section(self.conn, f"s|{self.rid}|nw"))
 
 
+class DividendTests(unittest.TestCase):
+    def test_trailing_yield_uses_paid_dividends(self):
+        import pandas as pd
+        from core.data.providers.yfinance_p import trailing_yield
+        idx = pd.to_datetime(["2025-06-30", "2026-03-31", "2026-06-30", "2026-09-30"]).tz_localize("Asia/Seoul")
+        divs = pd.Series([1000.0, 1500.0, 1500.0, 3283.0], index=idx)
+        now = pd.Timestamp("2026-11-14", tz="Asia/Seoul")
+        self.assertEqual(trailing_yield(divs, 206000.0, now), 3.05)  # 6 283 / 206 000 (o de 2025 já não conta)
+        self.assertIsNone(trailing_yield(pd.Series(dtype=float), 206000.0, now))
+
+
 if __name__ == "__main__":
     unittest.main()
