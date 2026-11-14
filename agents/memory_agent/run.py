@@ -10,7 +10,7 @@ def run(synthesis, conn=None):
     run_id = db.save_run(
         conn, ticker=s.ticker, rating=Rating.parse(s.rating), confidence=s.confidence, price=s.price,
         reasons=s.reasons, payload={**s.payload, "risks": s.risks, "warnings": s.warnings, "data_gaps": s.data_gaps,
-                                    "horizon": s.horizon},
+                                    "horizon": s.horizon, "headline": s.headline, "key_points": s.key_points},
         version=s.version, market=s.market, currency=s.currency, run_id=s.run_id,
     )
     return {"saved_id": run_id, "ticker": s.ticker, "rating": s.rating, "version": s.version}

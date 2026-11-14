@@ -74,7 +74,7 @@ class IpoTests(unittest.TestCase):
         class Cap:
             sent = []
 
-            def send(self, t):
+            def send(self, t, html=False):
                 self.sent.append(t)
                 return True
 

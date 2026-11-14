@@ -1,22 +1,28 @@
 """Notificações. Interface trocável; implementação Telegram + fallback consola.
 
-Env: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+Env: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID. O texto das mensagens é montado em core/messages.py.
 """
+import html as _html
 import json
 import os
+import re
 import urllib.request
 from typing import Protocol
 
-from .changes import Change
+DISCLAIMER = "Análise automática do Agentock — não é aconselhamento financeiro."
 
 
 class Notifier(Protocol):
-    def send(self, text: str) -> bool: ...
+    def send(self, text: str, html: bool = False) -> bool: ...
+
+
+def strip_html(text: str) -> str:
+    return _html.unescape(re.sub(r"<[^>]+>", "", text))
 
 
 class ConsoleNotifier:
-    def send(self, text: str) -> bool:
-        print("[NOTIFY - consola, Telegram não configurado]\n" + text)
+    def send(self, text: str, html: bool = False) -> bool:
+        print("[NOTIFY - consola, Telegram não configurado]\n" + (strip_html(text) if html else text))
         return False
 
 
@@ -25,9 +31,11 @@ class TelegramNotifier:
         self.url = f"https://api.telegram.org/bot{token}/sendMessage"
         self.chat_id = chat_id
 
-    def send(self, text: str) -> bool:
-        body = json.dumps({"chat_id": self.chat_id, "text": text}).encode()
-        req = urllib.request.Request(self.url, body, {"Content-Type": "application/json"})
+    def send(self, text: str, html: bool = False) -> bool:
+        payload = {"chat_id": self.chat_id, "text": text, "disable_web_page_preview": True}
+        if html:
+            payload["parse_mode"] = "HTML"
+        req = urllib.request.Request(self.url, json.dumps(payload).encode(), {"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=15) as r:
             return r.status == 200
 
@@ -35,29 +43,3 @@ class TelegramNotifier:
 def default_notifier() -> Notifier:
     token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     return TelegramNotifier(token, chat) if token and chat else ConsoleNotifier()
-
-
-DISCLAIMER = "Análise automática do Agentock — não é aconselhamento financeiro."
-
-
-def format_change(c: Change, price=None, confidence=None, reasons=None, diff: dict | None = None,
-                  version: str | None = None, currency: str | None = None, warnings: list | None = None) -> str:
-    arrow = "SUBIU" if c.delta > 0 else "DESCEU"
-    lines = [f"{c.ticker}: {c.old.label} -> {c.new.label} ({arrow} {abs(c.delta)} nível(is))"]
-    if price is not None:
-        lines.append(f"Preço: {price:,.2f} {currency or ''}".rstrip())
-    if confidence is not None:
-        lines.append(f"Confiança: {confidence:.0%}" + (f" · classificação {version}" if version else ""))
-    if c.kind == "confirmed":
-        lines.append("(mudança confirmada em execuções consecutivas)")
-    if reasons:
-        lines.append("Razões:")
-        lines += [f"- {r}" for r in reasons]
-    if diff and (diff.get("added") or diff.get("removed")):
-        lines.append("O que mudou face à classificação anterior:")
-        lines += [f"+ {r}" for r in diff.get("added", [])]
-        lines += [f"− {r}" for r in diff.get("removed", [])]
-    if warnings:
-        lines.append("Avisos: " + "; ".join(warnings))
-    lines.append(DISCLAIMER)
-    return "\n".join(lines)

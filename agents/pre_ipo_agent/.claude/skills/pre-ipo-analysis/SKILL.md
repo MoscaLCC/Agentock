@@ -26,5 +26,13 @@ f. **Sentimento**: notícias dos últimos 90 dias.
 - **neutro**: sinais mistos ou informação insuficiente (muitos campos não divulgados).
 - Confiança ≤ 0,6 se faltarem financeiras auditadas ou o intervalo de preço.
 
+## Versão curta (alertas no telemóvel) — obrigatória
+- `headline`: 1 frase simples, até 110 caracteres. Ex.: "Cresce muito depressa, mas a avaliação já é exigente".
+- `pros_short` / `cons_short`: 1–2 pontos de até 60 caracteres cada. Ex.: "Receita ×13 num ano" · "~29× a receita, acima dos peers".
+- Formato português nos textos curtos: "33 mil M USD", "1 bilião USD", "3,9%" — **nunca** "$33B" / "$1T".
+  Sem siglas de período ("9M26", "1S26", "T3"): escreve "9 meses de 2026", "1.º semestre de 2026", "3.º trimestre".
+- `ipo_date`: só a data (YYYY-MM-DD) ou null — comentários sobre a data vão para `watch_points`.
+- `exchange`: nome curto ("Nasdaq", "Tóquio"). `not_disclosed`: nomes curtos ("lock-up", "bookrunners", "caixa e dívida").
+
 ## Qualidade
 - Cada número com fonte; bull e bear específicos e falsificáveis; `watch_points` com datas (fixação do preço, estreia, fim do lock-up).

@@ -31,6 +31,13 @@ Dimensões ausentes (`null`) não contam para o peso; mas cada uma ausente reduz
 - −0,1 se a ação é IPO recente (`profile.ipo_recente`) — pouco histórico.
 - Nunca acima de 0,9. Abaixo de 0,4 → prefere **hold**.
 
+## Versão curta (alertas no telemóvel) — obrigatória
+- `headline`: 1 frase simples, até 110 caracteres, sem jargão. Ex.: "Empresa excelente, mas o preço já desconta o bom momento".
+- `key_points`: 2–3 pontos de até 60 caracteres, no máximo um número por ponto, do dossier.
+  Ex.: "Qualidade muito alta: Piotroski 9/9" · "Alvo médio 3,9% abaixo do preço" · "Resultados a 28 jan".
+- Nada de "Falsificável", fórmulas, siglas sem explicação ou parênteses longos — isso fica nas razões.
+- Formato português: "33 mil M USD", "3,9%", "28 de janeiro" — nunca "$33B"; sem siglas de período ("9M26", "T3").
+
 ## Regras obrigatórias
 - 2 a 5 razões, cada uma ligada a uma dimensão e com o número do dossier que a suporta.
 - 2 a 4 riscos concretos.

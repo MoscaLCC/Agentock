@@ -1,9 +1,9 @@
 """I.3 — ciclo pós-IPO. Lock-up: nos EUA lê o prazo no 424B4; fora dos EUA usa a convenção do mercado (não confirmada)."""
 from datetime import date, timedelta
 
-from core import db
+from core import db, messages
 from core.data import DataUnavailable, get_router
-from core.notify import DISCLAIMER, default_notifier
+from core.notify import default_notifier
 from core.util import as_dict, r2
 
 TYPICAL_LOCKUP = {"US": 180, "HK": 180, "KR": 180, "JP": 180, "EU": 180, "CN": 365}
@@ -60,11 +60,7 @@ def run(profile, notify=True):
         conn = db.connect()
         key = f"lockup:{p['symbol']}:{lock_date.isoformat()}"
         if not db.was_seen(conn, key):
-            oh = out["overhang"]
-            msg = (f"{p['symbol']} ({p['name']}): fim do lock-up em {days_left} dia(s), {lock_date.isoformat()}"
-                   f"{'' if confirmed else ' (prazo típico, não confirmado)'}.\n"
-                   f"Free float {oh['float_pct']}%; dias de negociação para absorver as ações bloqueadas: "
-                   f"{oh['days_to_trade_locked']}.\n{DISCLAIMER}")
-            out["alert_sent"] = default_notifier().send(msg)
+            msg = messages.lockup(p["symbol"], p["name"], lock_date.isoformat(), days_left, confirmed, out["overhang"])
+            out["alert_sent"] = default_notifier().send(msg, html=True)
             db.mark_seen(conn, key, "lockup", out["lockup"])
     return out

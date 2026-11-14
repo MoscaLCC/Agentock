@@ -1,9 +1,9 @@
 """I.1 — calendário de IPOs normalizado, filtrado e com alerta dos novos."""
 import re
 
-from core import db
+from core import db, messages
 from core.data import DataUnavailable, get_router
-from core.notify import DISCLAIMER, default_notifier
+from core.notify import default_notifier
 from core.util import as_dict
 
 SPAC = re.compile(r"acquisition|blank\s*check|\bspac\b|merger\s+corp|capital\s+corp\.?\s+[ivx]+\b", re.I)
@@ -73,11 +73,5 @@ def run(days=30, min_value_usd=500_000_000, include_spacs=False, notify=True, we
             db.mark_seen(conn, key, "ipo", it)
     out["new"] = new
     if notify and new:
-        lines = ["Novos IPOs no calendário:"]
-        for it in new[:10]:
-            v = f"{it['value_usd'] / 1e9:.1f} mil M USD" if it.get("value_usd") else "dimensão por divulgar"
-            lines.append(f"- {it.get('date')} {it.get('name')} ({it.get('symbol') or '—'}, {it.get('exchange') or '—'}) "
-                         f"preço {it.get('price_range') or '—'} · {v}")
-        lines.append(DISCLAIMER)
-        out["alert_sent"] = default_notifier().send("\n".join(lines))
+        out["alert_sent"] = default_notifier().send(messages.new_ipos(new), html=True)
     return out

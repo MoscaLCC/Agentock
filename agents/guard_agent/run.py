@@ -133,7 +133,9 @@ def compact(dossier: dict) -> dict:
 def run(decision, dossier, profile, version="v1", run_id=None):
     d, p = as_dict(decision), as_dict(profile)
     dossier = {k: as_dict(v) for k, v in (as_dict(dossier) or {}).items()}
-    chk = check_numbers(list(d.get("reasons") or []) + list(d.get("risks") or []), dossier)
+    texts = list(d.get("reasons") or []) + list(d.get("risks") or []) + list(d.get("key_points") or []) + \
+        ([d["headline"]] if d.get("headline") else [])
+    chk = check_numbers(texts, dossier)
     warnings = []
     conf = float(d["confidence"])
     if chk["unverified"]:
@@ -146,6 +148,7 @@ def run(decision, dossier, profile, version="v1", run_id=None):
     return Synthesis(
         ticker=p["symbol"], rating=d["rating"], confidence=round(conf, 3), price=p.get("price"),
         currency=p.get("currency"), market=p.get("market"), version=version, horizon=d.get("horizon"),
+        headline=d.get("headline"), key_points=d.get("key_points") or [],
         reasons=d.get("reasons") or [], risks=d.get("risks") or [], warnings=warnings, data_gaps=gaps,
         run_id=run_id, payload=payload,
     )

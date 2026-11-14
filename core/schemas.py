@@ -1,5 +1,9 @@
 """Contratos partilhados entre agentes."""
-from pydantic import BaseModel, Field
+import re
+
+from pydantic import BaseModel, Field, field_validator
+
+SHORT = "versão curta para o telemóvel"
 
 
 class Synthesis(BaseModel):
@@ -12,6 +16,8 @@ class Synthesis(BaseModel):
     market: str | None = None
     version: str = "v1"
     horizon: str | None = Field(default=None, description="horizonte da tese, ex.: '3-12 meses'")
+    headline: str | None = Field(default=None, description=f"{SHORT}: 1 frase")
+    key_points: list[str] = Field(default_factory=list, description=f"{SHORT}: 2-3 pontos")
     reasons: list[str] = Field(default_factory=list, description="2-5 razões principais")
     risks: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list, description="avisos do guard (números não verificados, etc.)")
@@ -25,6 +31,10 @@ class RatingDecision(BaseModel):
     rating: str = Field(description="strong_sell | sell | hold | buy | strong_buy")
     confidence: float = Field(ge=0, le=1)
     horizon: str = Field(description="horizonte da tese, ex.: '3-12 meses'")
+    headline: str = Field(description=f"{SHORT}: 1 frase simples, máx. 110 caracteres, sem jargão (ex.: "
+                                      "'Empresa excelente, mas o preço já desconta o bom momento')")
+    key_points: list[str] = Field(description=f"{SHORT}: 2-3 pontos de máx. 60 caracteres cada, um número no máximo "
+                                              "por ponto (ex.: 'Qualidade muito alta: Piotroski 9/9')")
     reasons: list[str] = Field(description="2-5 razões principais; cada número citado tem de vir do dossier")
     risks: list[str] = Field(description="2-4 riscos principais")
     bull_case: str | None = None
@@ -62,4 +72,24 @@ class IpoSynthesis(BaseModel):
     bear_case: list[str]
     watch_points: list[str]
     sources: list[str] = Field(default_factory=list)
-    not_disclosed: list[str] = Field(default_factory=list, description="campos que o prospeto ainda não divulga")
+    not_disclosed: list[str] = Field(default_factory=list, description="campos que o prospeto ainda não divulga "
+                                                                        "(nomes curtos, ex.: 'lock-up', 'bookrunners')")
+    headline: str = ""
+    pros_short: list[str] = Field(default_factory=list)
+    cons_short: list[str] = Field(default_factory=list)
+
+    @field_validator("ipo_date", mode="before")
+    @classmethod
+    def iso_date_only(cls, v):
+        """Só a data (YYYY-MM-DD); comentários sobre a data vão para watch_points, não para aqui."""
+        m = re.search(r"\d{4}-\d{2}-\d{2}", str(v or ""))
+        return m.group(0) if m else None
+
+
+class IpoAnalysis(IpoSynthesis):
+    """Contrato do LLM pré-IPO: as versões curtas são obrigatórias (a IpoSynthesis aceita dados antigos sem elas)."""
+    ipo_date: str | None = Field(default=None, description="só a data prevista de estreia, YYYY-MM-DD, ou null")
+    exchange: str | None = Field(default=None, description="nome curto da bolsa, ex.: 'Nasdaq', 'Tóquio'")
+    headline: str = Field(description=f"{SHORT}: 1 frase simples, máx. 110 caracteres")
+    pros_short: list[str] = Field(description=f"{SHORT}: 1-2 pontos a favor, máx. 60 caracteres cada")
+    cons_short: list[str] = Field(description=f"{SHORT}: 1-2 pontos contra, máx. 60 caracteres cada")

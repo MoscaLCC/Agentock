@@ -8,7 +8,7 @@ tools: [WebSearch, WebFetch, Read, Skill, Agent]
 bash: ["python scripts/*"]
 market_tools: [sec_search, search, profile, quote, financials, eod]
 hooks: [block_domains]
-output: schema.py:IpoSynthesis
+output: schema.py:IpoAnalysis
 cache_ttl: 86400
 cache_key: [ipo.name, ipo.price_range, ipo.date]
 subagents:

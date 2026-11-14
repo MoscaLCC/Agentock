@@ -109,7 +109,7 @@ class Finnhub(Provider):
                                          "to": (date.today() + timedelta(days=days)).isoformat()})
         return [{"date": i.get("date"), "symbol": i.get("symbol"), "name": i.get("name"),
                  "exchange": i.get("exchange"), "price_range": i.get("price"), "shares": i.get("numberOfShares"),
-                 "value": i.get("totalSharesValue"), "status": i.get("status")}
+                 "value": i.get("totalSharesValue"), "status": i.get("status"), "currency": "USD"}
                 for i in (d or {}).get("ipoCalendar", [])]
 
 
@@ -272,7 +272,7 @@ class AlphaVantage(Provider):
             lo, hi = num(r.get("priceRangeLow")), num(r.get("priceRangeHigh"))
             out.append({"date": r["ipoDate"], "symbol": r.get("symbol"), "name": r.get("name"),
                         "exchange": r.get("exchange"), "price_range": f"{lo}-{hi}" if lo and hi else None,
-                        "shares": None, "value": None, "status": "expected"})
+                        "shares": None, "value": None, "status": "expected", "currency": r.get("currency") or "USD"})
         return out
 
 

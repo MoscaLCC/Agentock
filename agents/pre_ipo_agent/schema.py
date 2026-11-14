@@ -1,1 +1,1 @@
-from core.schemas import IpoSynthesis  # noqa: F401  (o loader procura a classe neste ficheiro)
+from core.schemas import IpoAnalysis  # noqa: F401  (o loader procura a classe neste ficheiro)
