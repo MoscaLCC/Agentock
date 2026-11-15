@@ -41,7 +41,8 @@ def market_state(calendar_code: str | None, now: datetime) -> dict:
     ts = ts.floor("min")
     with _CAL_LOCK:  # as consultas preenchem caches internas do calendário na 1.ª utilização
         try:
-            is_open = bool(cal.is_open_on_minute(ts))
+            # ignore_breaks: na pausa de almoço (Hong Kong, Tóquio, Xangai) a sessão continua aberta
+            is_open = bool(cal.is_open_on_minute(ts, ignore_breaks=True))
         except Exception:
             is_open = False
         last_close = cal.previous_close(ts)

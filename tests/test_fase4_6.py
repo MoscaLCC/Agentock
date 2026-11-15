@@ -41,7 +41,7 @@ class ForecastTests(unittest.TestCase):
         out = m.ranges(100.0, closes)
         h = out["horizons"]["12m"]
         self.assertLess(h["p10"], h["p50"])
-        self.assertLess(h["p50"], 100.0)  # lognormal sem drift: mediana < preço
+        self.assertEqual(h["p50"], 100.0)  # Fase 10 (D27): a mediana é o preço atual, sem tendência
         self.assertLess(h["p90"] - h["p10"], 100)
         self.assertFalse(m.ranges(100.0, closes[:10])["available"])
 

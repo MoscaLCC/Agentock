@@ -1,4 +1,6 @@
-"""2.18a — intervalos estatísticos. Modelo simples e explícito: lognormal, drift 0, volatilidade de 1 ano."""
+"""2.18a — intervalos estatísticos. Modelo simples e explícito: lognormal com MEDIANA no preço atual (sem
+tendência) e volatilidade de 1 ano. Antes era a média que ficava no preço: com volatilidade alta a mediana a
+12 meses caía muito (Samsung, 77%: −25,7%) e era lida como cenário central pessimista."""
 import math
 
 from core.data import DataUnavailable, get_router
@@ -15,11 +17,19 @@ def ranges(price: float, closes: list[float]) -> dict:
     mu = sum(rets) / len(rets)
     sd = math.sqrt(sum((x - mu) ** 2 for x in rets) / (len(rets) - 1))
     out = {"available": True, "daily_vol_pct": r2(sd * 100, 3), "annual_vol_pct": r2(sd * math.sqrt(252) * 100),
-           "observations": len(rets), "model": "lognormal, drift 0, volatilidade dos últimos 252 dias", "horizons": {}}
+           "observations": len(rets), "horizons": {},
+           "model": "lognormal sem tendência (p50 = preço atual), volatilidade dos últimos 252 dias"}
     for h, n in HORIZONS.items():
         s = sd * math.sqrt(n)
-        out["horizons"][h] = {q: r2(price * math.exp(z * s - 0.5 * s * s)) for q, z in Z.items()}
+        out["horizons"][h] = {q: sig(price * math.exp(z * s)) for q, z in Z.items()}
     return out
+
+
+def sig(x: float, digits: int = 5) -> float:
+    """Arredonda a algarismos significativos (2 casas zeravam ações de cêntimos: SSU a 0,09 USD → 0,0)."""
+    if not x:
+        return 0.0
+    return round(x, max(2, digits - 1 - int(math.floor(math.log10(abs(x))))))
 
 
 def run(profile, price_targets=None, fundamental_data=None):
