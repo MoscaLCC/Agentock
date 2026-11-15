@@ -887,8 +887,9 @@ class Bot:
         waiting = [j for j in jobs.active(self.conn) if j["state"] != "running"]
         if waiting and not rec["resumed"]:
             lines.append(f"{len(waiting)} tarefa{'s' if len(waiting) != 1 else ''} em fila.")
-        if last or rec["resumed"] or rec["failed"]:
-            await self.say("\n".join(lines))
+        if not last:
+            lines.append("Escreve um ticker ou um nome para analisar, ou vê /ajuda.")
+        await self.say("\n".join(lines))   # aviso de arranque: sabes sempre quando o bot (re)começou
         self.wake.set()
 
     async def tick(self, now: datetime | None = None) -> None:

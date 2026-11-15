@@ -299,8 +299,9 @@ class CancelAndResumeTests(BotCase):
     def test_restart_resumes_interrupted_job_with_the_same_run(self):
         """O processo morreu a meio: a tarefa não se perde e reaproveita o que já estava feito."""
         bot = self.bot()
-        asyncio.run(bot.startup())                                                # 1.º arranque: silencioso
-        self.assertEqual(self.api.sent, [])
+        asyncio.run(bot.startup())                                                # 1.º arranque: avisa que está ligado
+        self.assertIn("Agentock ligado", self.api.sent[0]["text"])
+        self.assertNotIn("Parado desde", self.api.sent[0]["text"])
         self.run_all(bot, msg("/analisar AAPL"), work=False)
         job = jobs.claim(self.conn)                                               # começou a correr…
         jobs.update(self.conn, job["id"], run_id="20261115T000000-AAPL-abc123")
