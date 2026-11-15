@@ -75,6 +75,14 @@ class GuardTests(unittest.TestCase):
                          {"x": 1.0})
         self.assertEqual(out["checked"], 0)
 
+    def test_time_windows_are_not_data(self):
+        """9988.HK, 2026-11-15: "nenhum alvo foi revisto em 90 dias" custou 0,05 de confiança sem razão."""
+        d = {"price": 90.55, "days_to_earnings": 74}
+        self.assertEqual(self.check("nenhum alvo foi revisto em 90 dias; vendas a 180 dias", d)["checked"], 0)
+        self.assertEqual(self.check("resultados daqui a 74 dias", d)["unverified"], [])     # um dado: confere-se
+        self.assertEqual(self.check("resultados daqui a 75 dias", d)["unverified"], ["75"])
+        self.assertEqual(self.check("preço de 90 HKD", d)["unverified"], ["90"])            # 90,55 não é 90
+
     def test_two_numbers_separated_by_a_space_are_two_numbers(self):
         out = self.check("zona de compra entre 14,94 15,19", {"lo": 14.94, "hi": 15.19})
         self.assertEqual((out["checked"], out["unverified"]), (2, []))

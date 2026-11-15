@@ -27,6 +27,9 @@ LETTER_MULT = {"T": 1e12, "B": 1e9, "M": 1e6, "K": 1e3, "k": 1e3}
 WORD_VALUE = [("mil milh", 1e9), ("mil m", 1e9), ("bili", 1e12), ("tril", 1e12), ("billion", 1e9), ("milh", 1e6),
               ("million", 1e6), ("mil", 1e3), ("tn", 1e12), ("bn", 1e9), ("mn", 1e6)]
 IGNORE = {50.0, 52.0, 100.0, 200.0, 250.0, 252.0, 365.0}
+# janelas de tempo habituais: "revisto em 90 dias", "a 180 dias" são o nome da janela, não um dado do dossier
+TIME_WINDOWS = {30.0, 60.0, 90.0, 120.0, 180.0, 360.0}
+TIME_UNIT = re.compile(r"\s*(dias?|sessões|sessão|semanas?|meses|mês|anos?|horas?)\b", re.I)
 MONTHS = {m: i for i, names in enumerate((("jan", "janeiro"), ("fev", "fevereiro", "feb"), ("mar", "março"),
                                           ("abr", "abril", "apr"), ("mai", "maio", "may"), ("jun", "junho"),
                                           ("jul", "julho"), ("ago", "agosto", "aug"), ("set", "setembro", "sep"),
@@ -90,10 +93,14 @@ def numbers_in_text(text: str) -> list[tuple[str, list[tuple[float, int]], float
     found = []
     for m in TOKEN.finditer(text or ""):
         tok = m.group(0).strip()
-        suf = _suffix(text[m.end():m.end() + 18])
+        rest = text[m.end():m.end() + 18]
+        suf = _suffix(rest)
         if suf is None:
             continue
-        found.append((tok, parse(tok), suf[0], suf[1]))
+        interps = parse(tok)
+        if interps and interps[0][0] in TIME_WINDOWS and TIME_UNIT.match(rest):
+            continue
+        found.append((tok, interps, suf[0], suf[1]))
     return found
 
 

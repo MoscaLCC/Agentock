@@ -967,8 +967,27 @@ class Bot:
                             p.unlink()
                 except OSError:
                     pass
+        out["prewarm"] = self.prewarm()
         log.info("manutenção: %s", out)
         return out
+
+    def prewarm(self) -> int:
+        """Renova de madrugada os dados lentos das ações da lista (sem LLM, não gasta nada): na Coreia, os relatórios
+        de insiders da DART demoram ~100 s por empresa e atrasariam a análise seguinte."""
+        from core.data import DataUnavailable, get_router
+        from core.data.markets import market_of
+        n = 0
+        for w in jobs.watchlist(db.connect()):
+            if market_of(w["ticker"]) != "KR":
+                continue
+            try:
+                get_router().get("insider_transactions", w["ticker"], use_cache=False, days=180)
+                n += 1
+            except DataUnavailable:
+                pass
+            except Exception:  # noqa: BLE001
+                log.exception("pré-aquecimento de %s", w["ticker"])
+        return n
 
     async def scheduler(self) -> None:
         while True:
