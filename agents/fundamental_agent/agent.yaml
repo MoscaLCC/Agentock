@@ -7,5 +7,5 @@ inputs: [profile, data]
 defaults: {health: null}
 tools: []
 output: schema.py:FundamentalView
-cache_ttl: 43200
-cache_key: [profile.symbol, data.fiscal_years, data.vs_peers]
+cache_ttl: 43200        # por conteúdo dos dados fundamentais e da saúde
+cache_key: [profile.symbol, data, health]

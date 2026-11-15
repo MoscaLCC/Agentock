@@ -2,5 +2,4 @@ name: price_targets_agent
 kind: script
 description: 2.17 — preços-alvo (consenso, mínimo, máximo, mediana), potencial face ao preço, dispersão e alvos recentes por casa (EUA).
 inputs: [profile]
-cache_ttl: 21600
-cache_key: [profile.symbol]
+cache_ttl: 0            # o router já faz cache dos dados; o cálculo é instantâneo

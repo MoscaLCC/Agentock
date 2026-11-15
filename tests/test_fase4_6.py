@@ -16,7 +16,7 @@ def load(rel: str):
 
 class NewsScriptsTests(unittest.TestCase):
     def test_dedupe(self):
-        m = load("agents/_shared/news_base/scripts/dedupe.py")
+        from core import news as m
         items = [{"title": "Samsung in talks to buy Modine", "url": "https://x.com/a"},
                  {"title": "Samsung in talks to buy Modine - report", "url": "https://y.com/b"},
                  {"title": "Samsung HBM4E mass production", "url": "https://z.com/c"}]

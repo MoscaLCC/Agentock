@@ -1,5 +1,6 @@
 """2.12b — comparáveis. Números por código (router); o LLM só escolheu os peers."""
 import statistics
+from concurrent.futures import ThreadPoolExecutor
 
 from core.data import DataUnavailable, get_router
 from core.util import as_dict, major_currency, r2
@@ -57,10 +58,13 @@ def relative(target: dict, med: dict) -> dict:
 def run(profile, competitors):
     p, comp = as_dict(profile), as_dict(competitors)
     r = get_router()
-    target = row(r, p["symbol"])
+    plist = comp.get("peers") or []
+    # cada linha são 3 pedidos (perfil, contas, preços): em série eram 15,8 s a frio para 8 peers; assim ~5 s
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        rows = list(pool.map(lambda s: row(r, s), [p["symbol"]] + [x["symbol"] for x in plist]))
+    target = rows[0]
     peers, dropped = [], []
-    for peer in comp.get("peers") or []:
-        x = row(r, peer["symbol"])
+    for peer, x in zip(plist, rows[1:]):
         if x is None:
             dropped.append({"symbol": peer["symbol"], "reason": "sem dados no router"})
             continue

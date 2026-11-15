@@ -1,8 +1,0 @@
-name: news_7_days_agent
-extends: _shared/news_base
-description: 2.3 — notícias dos últimos 7 dias (principais acontecimentos da semana; cache 6 h).
-defaults:
-  hours: 168
-  focus: "os principais acontecimentos da semana (ignora ruído e opinião sem facto novo)"
-  max_items: 12
-cache_ttl: 21600

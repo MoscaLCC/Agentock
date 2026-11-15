@@ -1,0 +1,6 @@
+name: news_feed_agent
+kind: script
+description: 2.1a — recolha única das notícias dos últimos 30 dias nas APIs (várias fontes), sem repetidos, com id estável e janela por item. Sem LLM.
+inputs: [profile]
+cache_ttl: 600            # 10 min: a recolha é barata e tem de estar fresca
+cache_key: [profile.symbol]

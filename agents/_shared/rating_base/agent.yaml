@@ -1,9 +1,9 @@
 name: rating_base
 description: Base da classificação 2.19 (rubrica, schema, tarefa). Não é usado diretamente.
 model: claude-opus-5-5
-max_turns: 8
-max_budget_usd: 2.0
+max_turns: 3
+max_budget_usd: 1.5
 inputs: [ticker, dossier]
 tools: []
 output: schema.py:RatingDecision
-cache_ttl: 0
+cache_ttl: 21600          # 6 h, por conteúdo: o mesmo dossier (e os mesmos casos) dá a mesma decisão

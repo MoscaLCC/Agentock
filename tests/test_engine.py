@@ -129,10 +129,13 @@ class EngineTests(unittest.TestCase):
     def test_hooks_block_domain(self):
         hooks = build_hooks(["block_domains"], {"run_id": "test", "agent": "t"})
         self.assertIn("PreToolUse", hooks)
-        pre = hooks["PreToolUse"][0].hooks[0]
-        out = asyncio.run(pre({"tool_input": {"url": "https://www.gurufocus.com/x"}}, None, None))
-        self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "deny")
-        self.assertEqual(asyncio.run(pre({"tool_input": {"url": "https://reuters.com/x"}}, None, None)), {})
+        fetch = [h for m in hooks["PreToolUse"] if m.matcher == "WebFetch" for h in m.hooks]
+
+        def decide(url):
+            outs = [asyncio.run(h({"tool_name": "WebFetch", "tool_input": {"url": url}}, None, None)) for h in fetch]
+            return "deny" if any(o.get("hookSpecificOutput", {}).get("permissionDecision") == "deny" for o in outs) else "allow"
+        self.assertEqual(decide("https://www.gurufocus.com/x"), "deny")
+        self.assertEqual(decide("https://reuters.com/x"), "allow")
 
 
 if __name__ == "__main__":

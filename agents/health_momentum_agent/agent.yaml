@@ -2,5 +2,4 @@ name: health_momentum_agent
 kind: script
 description: 2.7 — saúde (Piotroski, Altman Z, alavancagem), força (rentabilidade) e momentum relativo ao índice, em scores 0-100 com fórmulas explícitas.
 inputs: [profile]
-cache_ttl: 43200
-cache_key: [profile.symbol]
+cache_ttl: 0            # o router já faz cache dos dados; o cálculo é instantâneo

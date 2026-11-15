@@ -1,0 +1,7 @@
+name: debate_bull_agent
+extends: _shared/debate_base
+description: 2.19a — debate, lado otimista. Constrói o caso mais forte A FAVOR da ação, só com dados do dossier.
+defaults:
+  role: otimista
+  goal: A FAVOR da ação
+  concession: o risco que mais enfraquece o teu caso

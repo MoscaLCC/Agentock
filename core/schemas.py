@@ -26,6 +26,20 @@ class Synthesis(BaseModel):
     payload: dict = Field(default_factory=dict, description="resumo das análises usadas")
 
 
+class DebateCase(BaseModel):
+    """Caso de um dos lados do debate (nós `bull` e `bear`)."""
+    arguments: list[str] = Field(description="3 a 5 argumentos por ordem de força; cada um com o número exato do "
+                                             "dossier e o campo de onde vem")
+    concession: str = Field(description="1 frase: o que mais enfraquece este caso")
+
+
+class Evidence(BaseModel):
+    """Origem de um número citado: o guard confere o número contra esse campo do dossier."""
+    number: str = Field(description="o número tal como aparece na razão ou no risco, ex.: '2,66' ou '475 629'")
+    path: str = Field(description="caminho do campo no dossier, ex.: 'fundamental_data.valuation.forward_pe' "
+                                  "ou 'technical.signals[2]'")
+
+
 class RatingDecision(BaseModel):
     """Saída do LLM de classificação (o guard transforma em Synthesis)."""
     rating: str = Field(description="strong_sell | sell | hold | buy | strong_buy")
@@ -37,6 +51,7 @@ class RatingDecision(BaseModel):
                                               "por ponto (ex.: 'Qualidade muito alta: Piotroski 9/9')")
     reasons: list[str] = Field(description="2-5 razões principais; cada número citado tem de vir do dossier")
     risks: list[str] = Field(description="2-4 riscos principais")
+    evidence: list[Evidence] = Field(default_factory=list, description="um por número citado nas razões e nos riscos")
     bull_case: str | None = None
     bear_case: str | None = None
 

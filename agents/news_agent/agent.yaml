@@ -1,0 +1,5 @@
+name: news_agent
+kind: script
+description: 2.1 — notícias por janela (4h, 24h, 7d, 30d, sem sobreposição). Junta a recolha das APIs com a triagem do LLM e recalcula as janelas pela hora de publicação; o que saiu depois da triagem entra "por triar".
+inputs: [profile]
+defaults: {feed: null, scan: null}

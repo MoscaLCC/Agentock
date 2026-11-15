@@ -1,7 +1,7 @@
 name: market_share_agent
 description: 2.11 — estrutura do mercado/indústria (monopólio, oligopólio, concorrencial), quotas dos principais players e fontes. 
 model: claude-sonnet-5-5
-max_turns: 20
+max_turns: 12
 max_budget_usd: 0.8
 inputs: [profile]
 defaults: {competitors: null}

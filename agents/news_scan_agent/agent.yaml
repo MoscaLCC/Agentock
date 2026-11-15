@@ -1,0 +1,12 @@
+name: news_scan_agent
+description: 2.1b — uma só sessão LLM para as notícias dos últimos 30 dias. Anota relevância, tom, categoria e resumo dos itens já recolhidos pelas APIs e completa com pesquisa web (língua local e janela de 7–30 dias).
+model: claude-sonnet-5-5
+max_turns: 12
+max_budget_usd: 0.6
+inputs: [profile]
+defaults: {feed: null}
+tools: [WebSearch, WebFetch]
+hooks: [block_domains, fetch_guard]
+output: schema.py:NewsScan
+cache_ttl: 3600           # 1 h; o que for publicado entretanto entra "por triar" no nó news (código)
+cache_key: [profile.symbol]

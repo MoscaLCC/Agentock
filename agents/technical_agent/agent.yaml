@@ -6,5 +6,5 @@ max_budget_usd: 0.2
 inputs: [profile, indicators]
 tools: []
 output: schema.py:TechnicalView
-cache_ttl: 3600
-cache_key: [profile.symbol, indicators.last_date]
+cache_ttl: 86400        # por conteúdo: os indicadores diários só mudam uma vez por dia
+cache_key: [profile.symbol, indicators]

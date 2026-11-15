@@ -83,10 +83,26 @@ def _path(inputs: dict, key: str):
     return v
 
 
+# Campos que mudam a cada execução sem mudar o conteúdo (horas de recolha, fornecedor que respondeu): ficam fora
+# da chave de cache, senão um nó LLM nunca acertava na cache mesmo com os mesmos dados.
+VOLATILE = frozenset({"quote_ts", "fetched_at", "generated_at", "scanned_at", "searched_at", "sources", "provider",
+                      "cached", "run_id"})
+
+
+def _stable(x):
+    if isinstance(x, dict):
+        return {k: _stable(v) for k, v in x.items() if k not in VOLATILE}
+    if isinstance(x, list):
+        return [_stable(v) for v in x]
+    return x
+
+
 def cache_key(spec: AgentSpec, inputs: dict) -> str:
-    """cache_key aceita caminhos (ex.: profile.symbol) para não depender de campos voláteis como o preço."""
+    """Chave da cache de outputs. Com `cache_key` no agent.yaml: só esses caminhos (ex.: profile.symbol).
+    Sem `cache_key`: o conteúdo de todos os inputs, sem os campos voláteis — o mesmo dossier dá a mesma
+    classificação, e uma reanálise com a bolsa fechada não volta a pagar os nós LLM."""
     keys = spec.cache_key or sorted(inputs)
-    payload = json.dumps({k: _path(inputs, k) for k in keys}, sort_keys=True, default=str)
+    payload = json.dumps({k: _stable(_path(inputs, k)) for k in keys}, sort_keys=True, default=str)
     return f"{spec.name}:{hashlib.sha256(payload.encode()).hexdigest()[:32]}"
 
 
@@ -155,6 +171,7 @@ def _options(spec: AgentSpec, vars_: dict, ctx: dict, add_dirs: list[str] | None
         tools=spec.builtin_tools, allowed_tools=spec.allowed_tools, skills=[],
         mcp_servers=mcp, strict_mcp_config=True, cwd=str(spec.asset_dir),
         setting_sources=[], env=spec.session_env,
+        permission_mode="dontAsk",  # o que não está em allowed_tools é recusado, sem perguntar a ninguém
         max_turns=spec.max_turns, model=spec.model, hooks=build_hooks(spec.hooks, ctx),
     )
     if spec.output_model:
@@ -178,6 +195,7 @@ async def _run_llm(spec: AgentSpec, inputs: dict, ctx: dict):
     vars_ = {k: (v if isinstance(v, (str, int, float)) else dumps(v)) for k, v in inputs.items()}
     vars_["now"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     add_dirs = _write_file_inputs(spec, inputs, vars_, ctx["run_id"])
+    ctx = {**ctx, "dirs": [str(spec.asset_dir), *add_dirs]}  # o read_guard só deixa ler aqui
     result = None
     # consumir o gerador até ao fim (um return a meio deixa-o por fechar → RuntimeError no aclose)
     async for msg in query(prompt=spec.task_tpl.safe_substitute(vars_), options=_options(spec, vars_, ctx, add_dirs)):

@@ -1,7 +1,7 @@
 name: competitors_agent
 description: 2.12a — lista validada de concorrentes cotados diretos (qualquer mercado). Os peers do FMP servem só de pista (têm ruído).
 model: claude-sonnet-5-5
-max_turns: 20
+max_turns: 24
 max_budget_usd: 0.8
 inputs: [profile]
 tools: [WebSearch]

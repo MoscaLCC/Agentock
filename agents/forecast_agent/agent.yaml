@@ -7,4 +7,4 @@ inputs: [profile, stats]
 defaults: {fundamental: null, sentiment: null, technical: null, analysts: null}
 tools: []
 output: schema.py:Forecast
-cache_ttl: 0
+cache_ttl: 21600        # por conteúdo de todos os inputs (preço incluído)
