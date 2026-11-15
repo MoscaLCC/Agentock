@@ -63,7 +63,7 @@ class ChangeTests(unittest.TestCase):
         alert_run(mk("hold"), conn=self.conn, notifier=n)
         out = alert_run(mk("strong_buy"), conn=self.conn, notifier=n)
         self.assertTrue(out["changed"] and out["sent"])
-        self.assertIn("HOLD → COMPRA FORTE", n.sent[0])
+        self.assertIn("MANTER → COMPRA FORTE", n.sent[0])
         self.assertIn("/detalhe_X", n.sent[0])
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0], 1)
 

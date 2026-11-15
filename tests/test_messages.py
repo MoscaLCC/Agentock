@@ -20,7 +20,7 @@ def visible(html_text: str) -> str:
 class FormatTests(unittest.TestCase):
     def test_numbers_pt(self):
         self.assertEqual(M.price_pt(356.4), "356,40")
-        self.assertEqual(M.price_pt(206000.0), "206 000")
+        self.assertEqual(M.price_pt(206000.0), "206.000")
         self.assertEqual(M.big_pt(916.09e9), "916 mil M")
         self.assertEqual(M.big_pt(1.0208e12), "1,02 biliões")
         self.assertEqual(M.big_pt(74.0e9), "74,0 mil M")
@@ -50,7 +50,7 @@ class RatingMessageTests(unittest.TestCase):
         msg = M.rating_change(Change("AAPL", Rating.HOLD, Rating.BUY, "confirmed"), s,
                               {"added": ["Resultados acima do esperado"], "removed": []})
         lines = msg.split("\n")
-        self.assertTrue(lines[0].startswith("🟢 <b>AAPL — HOLD → COMPRA</b>"))
+        self.assertTrue(lines[0].startswith("🟢 <b>AAPL — MANTER → COMPRA</b>"))
         self.assertIn("356,40 USD · confiança 60% · confirmada", lines[1])
         self.assertIn("&lt;forte&gt;", msg)  # HTML escapado
         self.assertIn("/detalhe_AAPL", msg)

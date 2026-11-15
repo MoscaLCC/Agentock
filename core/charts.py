@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.patches import FancyBboxPatch  # noqa: E402
 from matplotlib.ticker import FuncFormatter  # noqa: E402
 
-from .messages import MONTHS, date_pt, num_pt, price_pt  # noqa: E402
+from .messages import MONTHS, date_pt, num_pt, price_pt, short_name, shorten, when_pt  # noqa: E402
 from .ratings import Rating  # noqa: E402
 
 THEMES = {
@@ -41,7 +41,8 @@ def theme() -> dict:
 def _pt_axis(v, _pos=None):
     if v == 0:
         return "0"
-    return num_pt(v, 0 if abs(v) >= 100 else (1 if abs(v) >= 10 else 2))
+    a = abs(v)  # ações de cêntimos: com 2 casas o eixo mostrava "0,00" cinco vezes
+    return num_pt(v, 0 if a >= 100 else 1 if a >= 10 else 2 if a >= 1 else 3 if a >= 0.1 else 4)
 
 
 def _sma(values: list[float], n: int) -> list[float | None]:
@@ -89,7 +90,10 @@ def place_labels(items: list[tuple[float, str]], x0: float, x1: float, levels: l
     return out
 
 
-W_IN, H_IN = 6.0, 9.1  # 1080 × 1638 px a 180 dpi (vertical, para telemóvel)
+W_IN, H_IN = 6.0, 9.1  # medidas de desenho (polegadas): as posições abaixo referem-se a estas
+# A figura é criada mais pequena e com mais pontos por polegada: os mesmos 1080 × 1638 px, mas a letra (em pontos)
+# fica ~18% maior em relação ao desenho — na bolha do chat do telemóvel a de 6,5 pt não se lia.
+SCALE = 0.85
 
 
 def _y(inches_from_top: float) -> float:
@@ -108,13 +112,14 @@ def stock_card(data: dict, bars: list[dict]) -> bytes:
     prof, ind = o.get("profile") or {}, o.get("indicators") or {}
     rating = Rating(run["rating"])
     plt.rcParams["font.family"] = FONT
-    fig = plt.figure(figsize=(W_IN, H_IN), dpi=180, facecolor=t["surface"])
+    fig = plt.figure(figsize=(W_IN * SCALE, H_IN * SCALE), dpi=180 / SCALE, facecolor=t["surface"])
 
     # ---------------------------------------------------------------- cabeçalho
-    fig.text(0.05, _y(0.30), run["ticker"], fontsize=17, fontweight="bold", color=t["ink"], va="center")
+    title = shorten(short_name(prof.get("name")) or run["ticker"], 19)   # o nome diz mais do que o código
+    fig.text(0.05, _y(0.30), title, fontsize=16, fontweight="bold", color=t["ink"], va="center")
     cur = run["currency"] or prof.get("currency") or ""
     chg = prof.get("change_pct")
-    sub = f"{(prof.get('name') or '')[:34]} · {price_pt(run['price'])} {cur}" if run["price"] else prof.get("name", "")
+    sub = f"{run['ticker']} · {price_pt(run['price'])} {cur}" if run["price"] else run["ticker"]
     if chg is not None:
         sub += f" ({'+' if chg >= 0 else ''}{num_pt(chg, 2)}%)"
     fig.text(0.05, _y(0.60), sub, fontsize=9, color=t["ink2"], va="center")
@@ -127,7 +132,6 @@ def stock_card(data: dict, bars: list[dict]) -> bytes:
              color=t["ink2"], ha="right", va="center")
 
     # ---------------------------------------------------------------- 1) preço 6 meses + médias + níveis
-    fig.text(0.05, _y(0.95), "Preço · 6 meses", fontsize=9, color=t["muted"], va="center")
     ax = fig.add_axes(_box(0.13, 1.15, 0.79, 2.05))
     _style_axis(ax, t)
     closes = [b["c"] for b in bars if b.get("c")]
@@ -136,6 +140,9 @@ def stock_card(data: dict, bars: list[dict]) -> bytes:
         s50, s200 = _sma(closes, 50), _sma(closes, 200)
         k = max(0, len(closes) - 126)
         d, c = dates[k:], closes[k:]
+        months = max(1, round((d[-1] - d[0]).days / 30.4))  # ação recente: o título diz o que o gráfico mostra
+        fig.text(0.05, _y(0.95), f"Preço · {months} {'mês' if months == 1 else 'meses'}", fontsize=9,
+                 color=t["muted"], va="center")
         ax.plot(d, c, color=t["s1"], linewidth=2, label="Preço", solid_capstyle="round")
         for series, color, name in ((s50, t["s2"], "Média 50 dias"), (s200, t["s3"], "Média 200 dias")):
             seg = series[k:]
@@ -160,6 +167,9 @@ def stock_card(data: dict, bars: list[dict]) -> bytes:
             line.set_linewidth(2)
         ax.set_xlim(d[0], d[-1])
     else:
+        fig.text(0.05, _y(0.95), "Preço", fontsize=9, color=t["muted"], va="center")
+        ax.set_xticks([])
+        ax.set_yticks([])
         ax.text(0.5, 0.5, "sem preços", transform=ax.transAxes, ha="center", color=t["muted"])
 
     # ---------------------------------------------------------------- 2) preço vs alvos e cenários (régua de preço)
@@ -273,8 +283,8 @@ def stock_card(data: dict, bars: list[dict]) -> bytes:
         fig.text(x, _y(top), value, fontsize=10.5, color=t["ink"], fontweight="bold", va="center")
         fig.text(x, _y(top + 0.18), label, fontsize=6.5, color=t["muted"], va="center")
 
-    stamp = (run["ts"] or "")[:16].replace("T", " ")
-    fig.text(0.05, _y(8.98), f"Agentock · {stamp} UTC · análise automática, não é aconselhamento financeiro",
+    stamp = when_pt(run["ts"]) or ""
+    fig.text(0.05, _y(8.98), f"Agentock · {stamp} (Lisboa) · análise automática, não é aconselhamento financeiro",
              fontsize=6, color=t["muted"], va="center")
     buf = io.BytesIO()
     fig.savefig(buf, format="png", facecolor=t["surface"])

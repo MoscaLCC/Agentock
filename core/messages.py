@@ -6,11 +6,15 @@ Texto dinâmico é sempre escapado (HTML do Telegram).
 """
 import html
 import re
-from datetime import date
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 
 from .ratings import IpoRating, Rating
 
 DISCLAIMER_SHORT = "Não é aconselhamento financeiro."
+LISBON = ZoneInfo("Europe/Lisbon")
+_PT_SEPARATORS = str.maketrans({",": ".", ".": ","})
+MINUS = "\u2212"
 MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
 EMOJI_RATING = {-2: "🔴", -1: "🔴", 0: "🟡", 1: "🟢", 2: "🟢"}
 EMOJI_IPO = {-1: "🔴", 0: "🟡", 1: "🟢"}
@@ -28,15 +32,52 @@ def esc(x) -> str:
 
 
 def num_pt(x: float, decimals: int = 2) -> str:
-    """1234.5 → '1 234,50' (espaço fino como separador de milhares)."""
-    s = f"{x:,.{decimals}f}"
-    return s.replace(",", " ").replace(".", ",")
+    """1234.5 → '1.234,50' (formato português: ponto nos milhares, vírgula decimal)."""
+    return f"{x:,.{decimals}f}".translate(_PT_SEPARATORS)
 
 
 def price_pt(x: float | None) -> str | None:
+    """Preço: 2 casas até 1000, sem casas acima; ações de cêntimos com 3–4 casas (0,093 e não 0,09)."""
     if x is None:
         return None
-    return num_pt(x, 2 if abs(x) < 1000 else 0)
+    a = abs(x)
+    if 0 < a < 1:   # até 4 casas, sem zeros a mais: 0,093 · 0,5 → 0,50
+        body = num_pt(x, 4).rstrip("0")
+        return body + "0" * max(0, 2 - len(body.split(",")[1]))
+    return num_pt(x, 2 if round(a, 2) < 1000 else 0)
+
+
+def pct_pt(x: float | None, decimals: int = 1, sign: bool = True) -> str | None:
+    """+11,9% · −0,96% · 0% (nunca "-0%"); sinal de menos tipográfico."""
+    if x is None:
+        return None
+    v = round(x, decimals)
+    if v == 0:
+        return "0%"
+    body = num_pt(abs(v), decimals)
+    if decimals and body.endswith("," + "0" * decimals):
+        body = body[: -decimals - 1]
+    return (MINUS if v < 0 else "+" if sign else "") + body + "%"
+
+
+def when_pt(ts: str | None, with_time: bool = True) -> str | None:
+    """Instante ISO (UTC) → '14 nov, 17:09' na hora de Lisboa."""
+    if not ts:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except ValueError:
+        return date_pt(ts)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    dt = dt.astimezone(LISBON)
+    day = f"{dt.day} {MONTHS[dt.month - 1]}" + ("" if dt.year == datetime.now(LISBON).year else f" {dt.year}")
+    return f"{day}, {dt:%H:%M}" if with_time else day
+
+
+def duration_pt(seconds: float) -> str:
+    s = int(round(seconds))
+    return f"{s} s" if s < 60 else f"{s // 60} min" + (f" {s % 60:02d} s" if s % 60 else "")
 
 
 def big_pt(x: float | None) -> str | None:
@@ -118,6 +159,16 @@ def first_clause(text: str | None) -> str:
     return m[0].strip()
 
 
+def point_of(reason: str | None, n: int = 80) -> str:
+    """Ponto curto a partir de uma razão longa: "Fundamentais e valorização: P/E forward 2,66 e…" →
+    "P/E forward 2,66 e…" (o rótulo da dimensão sozinho não diz nada)."""
+    t = re.sub(r"\s+", " ", str(reason or "")).strip()
+    m = re.match(r"^[^:.]{2,45}:\s+(.+)$", t)
+    body = m.group(1) if m else t
+    first = re.split(r"(?<=[^\d])[.;](?=\s)|\s—\s", body, maxsplit=1)[0].strip()
+    return shorten(first[:1].upper() + first[1:], n)
+
+
 def command_arg(symbol: str) -> str:
     """Comando tocável do Telegram só aceita [A-Za-z0-9_]: 005930.KS → 005930_KS."""
     return re.sub(r"[^A-Za-z0-9]", "_", symbol)
@@ -197,3 +248,71 @@ def lockup(symbol: str, name: str, lock_date: str, days_left: int, confirmed: bo
     if not confirmed:
         lines.append("Prazo típico — não confirmado no prospeto.")
     return "\n".join(lines + [""] + footer(f"/detalhe_{command_arg(symbol)}"))
+
+
+# ------------------------------------------------------------------ veredicto (1.ª mensagem de uma análise)
+def scenario_range(forecast: dict | None, price: float | None) -> str | None:
+    """'+11,9% esperado (−49% a +65%)' a partir dos cenários a 12 meses."""
+    fc = forecast or {}
+    exp = fc.get("expected_return_12m_pct")
+    if exp is None and fc.get("expected_12m") and price:
+        exp = (fc["expected_12m"] / price - 1) * 100
+    if exp is None:
+        return None
+    out = f"{pct_pt(exp)} esperado"
+    prices = [s.get("price_12m") for s in fc.get("scenarios") or [] if s.get("price_12m")]
+    if price and len(prices) >= 2:
+        out += f" ({pct_pt((min(prices) / price - 1) * 100, 0)} a {pct_pt((max(prices) / price - 1) * 100, 0)})"
+    return out
+
+
+def verdict(data: dict, *, previous: dict | None = None, change: dict | None = None, gaps: int = 0,
+            total: int = 0, note: str | None = None) -> str:
+    """O que se quer saber em 5 segundos: classificação e confiança, preço, porquê, o que mudou, o que esperar.
+
+    data: report_data.by_run(...) · previous: classificação anterior da mesma ação ({rating, confidence, ts})
+    change: output do nó `alert` quando houve alteração confirmada · gaps/total: passos sem dados."""
+    run, p, o = data["run"], data["payload"], data["outputs"]
+    prof = o.get("profile") or {}
+    rating = Rating(run["rating"])
+    name = shorten(short_name(prof.get("name")) or run["ticker"], 32)
+    lines = [f"{EMOJI_RATING[int(rating)]} <b>{esc(name)} — {esc(rating.label.upper())}</b> · confiança "
+             f"{(run['confidence'] or 0):.0%}"]
+    facts = []
+    if run["price"] is not None:
+        cur = run["currency"] or prof.get("currency") or ""
+        chg = pct_pt(prof.get("change_pct"), 2)
+        facts.append(f"{price_pt(run['price'])} {cur}".strip() + (f" ({chg} hoje)" if chg else ""))
+    facts.append(run["ticker"])
+    lines.append(esc(" · ".join(facts)))
+    if note:
+        lines.append(f"<i>Pedido: {esc(shorten(note.split(';')[0], 90))}</i>")
+    headline = p.get("headline") or (point_of(data["reasons"][0], 110) if data.get("reasons") else None)
+    if headline:
+        lines += ["", f"<i>{esc(shorten(headline, 130))}</i>"]
+    extra = []
+    if change and change.get("changed"):
+        kind = {"confirmed": "confirmada", "immediate": "salto de 2 ou mais níveis"}.get(change.get("kind"), "")
+        extra.append(f"↗️ Mudou: {esc(str(change.get('old', '')).upper())} → {esc(str(change.get('new', '')).upper())}"
+                     + (f" ({kind})" if kind else ""))
+    elif previous and previous.get("rating") is not None and int(previous["rating"]) != int(rating):
+        old = Rating(int(previous["rating"]))
+        extra.append(f"↗️ Antes: {esc(old.label.upper())} {(previous.get('confidence') or 0):.0%} "
+                     f"({esc(when_pt(previous.get('ts'), False) or '')}) — a mudança ainda está por confirmar")
+    elif previous and previous.get("rating") is not None:
+        extra.append(f"↔️ Igual à análise anterior ({esc(when_pt(previous.get('ts'), False) or '')})")
+    rng = scenario_range(o.get("forecast"), run["price"])
+    if rng:
+        extra.append(f"🎯 12 meses: {esc(rng)}")
+    cal = o.get("calendar") or {}
+    if cal.get("next_earnings"):
+        days = cal.get("days_to_earnings")
+        extra.append(f"📅 Resultados a {esc(date_pt(cal['next_earnings']) or '')}"
+                     + (f" (daqui a {days} dias)" if isinstance(days, int) and 0 <= days <= 30 else ""))
+    if gaps:
+        extra.append(f"⚠️ {gaps} de {total} passos sem dados" if total else f"⚠️ {gaps} passos sem dados")
+    if p.get("warnings"):
+        extra.append("⚠️ " + esc(shorten(p["warnings"][0], 90)))
+    if extra:
+        lines += [""] + extra
+    return "\n".join(lines)
