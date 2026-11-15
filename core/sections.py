@@ -11,12 +11,12 @@ from .ratings import Rating
 from .telegram import keyboard
 
 SECTIONS = [("rz", "🧾 Razões"), ("rk", "⚠️ Riscos"), ("db", "🥊 Debate"),
-            ("pr", "🏢 Peers"), ("sc", "🎯 Cenários"), ("nw", "📰 Notícias")]
+            ("pr", "🏢 Peers"), ("in", "👔 Insiders"), ("sc", "🎯 Cenários"), ("nw", "📰 Notícias")]
 
 
 def buttons(row_id: int) -> dict:
     cb = [(label, f"s|{row_id}|{key}") for key, label in SECTIONS]
-    return keyboard([cb[:3], cb[3:]])
+    return keyboard([cb[:3], cb[3:5], cb[5:]])  # 3 · 2 · 2: os rótulos cabem sem cortes no telemóvel
 
 
 def card_png(data: dict) -> bytes:
@@ -145,7 +145,66 @@ def sec_news(data: dict) -> str:
     return "\n".join(lines)
 
 
-BUILDERS = {"rz": sec_reasons, "rk": sec_risks, "db": sec_debate, "pr": sec_peers, "sc": sec_scenarios, "nw": sec_news}
+def short_money(v: float | None) -> str:
+    """Valor compacto para tabelas: 350 k · 97 M · 1,9 mM (mil milhões) · 3,9 B (biliões)."""
+    a = abs(v or 0)
+    for div, unit in ((1e12, "B"), (1e9, "mM"), (1e6, "M"), (1e3, "k")):
+        if a >= div:
+            return f"{M.num_pt(v / div, 1 if a < 10 * div else 0)} {unit}"
+    return M.num_pt(v or 0, 0)
+
+
+SOURCES = {"sec": "SEC Form 4", "dart": "DART (Coreia)", "finnhub": "Finnhub"}
+
+
+def _person(name: str | None) -> str:
+    n = name or "—"
+    return n.title() if n.isupper() else n  # 'COOK TIMOTHY D' → 'Cook Timothy D'
+
+
+def sec_insiders(data: dict) -> str:
+    ins = data["outputs"].get("insiders") or {}
+    if not ins.get("available"):
+        return _title(data, "Insiders") + "\n\n" + M.esc(f"Sem dados de insiders: {ins.get('reason') or 'não analisado'}.")
+    cur = ins.get("currency") or ""
+    sc = ins.get("score") or 0
+    head = (f"<b>{M.esc(ins['label'].capitalize())}</b> ({'+' if sc > 0 else ''}{sc}) · "
+            f"fonte: {M.esc(SOURCES.get(ins.get('source'), ins.get('source') or ''))}")
+    def cell(value, n):
+        return f"{short_money(value)} ({n})" if n else "—"
+
+    lines = [f"{'':5}{'compras':>12}{'vendas':>12}{'saldo':>8}"]  # 37 colunas
+    for d in ("30", "90", "180"):
+        w = (ins.get("windows") or {}).get(d) or {}
+        net = w.get("net_value") or 0
+        lines.append(f"{d + ' d':5}{cell(w.get('buy_value'), w.get('buys')):>12}"
+                     f"{cell(w.get('sell_value'), w.get('sells')):>12}"
+                     f"{(('+' if net > 0 else '') + short_money(net)) if net else '—':>8}")
+    out = [_title(data, "Insiders"), head, ""] + [f"• {M.esc(x)}" for x in ins.get("signals") or []]
+    out += [f"<pre>{M.esc(chr(10).join(lines))}</pre>",
+            f"<i>Compras e vendas em bolsa, em {M.esc(cur)} (n.º de transações). "
+            "k mil · M milhões · mM mil milhões · B biliões</i>"]
+    notable = ins.get("notable") or []
+    if notable:
+        out += ["", "<b>Maiores transações</b> (180 dias)"]
+        for t in notable[:5]:
+            extra = [x for x in ("plano 10b5-1" if t.get("planned") and ins.get("source") == "sec" else
+                                 "com pré-aviso" if t.get("planned") else None, t.get("note")) if x]
+            out.append(f"{M.esc(M.date_pt(t['date']) or '')} · {M.esc(_person(t['name']))}"
+                       f" ({M.esc(t.get('role') or '—')}) · {M.esc(t['kind'])} "
+                       f"{M.esc(short_money(t.get('value')))} {M.esc(cur)}"
+                       + (f" · <i>{M.esc('; '.join(extra))}</i>" if extra else ""))
+    routine = {k: v for k, v in (ins.get("routine_180d") or {}).items() if v}
+    if routine:
+        one = {"atribuições": "atribuição", "exercícios": "exercício", "impostos": "imposto", "doações": "doação",
+               "heranças": "herança"}
+        items = ", ".join(f"{v} {one.get(k, k) if v == 1 else k}" for k, v in routine.items())
+        out += ["", "<i>" + M.esc(f"Fora do sinal (180 dias): {items}") + "</i>"]
+    return "\n".join(out)
+
+
+BUILDERS = {"rz": sec_reasons, "rk": sec_risks, "db": sec_debate, "pr": sec_peers, "in": sec_insiders,
+            "sc": sec_scenarios, "nw": sec_news}
 
 
 def section(conn, callback_data: str) -> str:

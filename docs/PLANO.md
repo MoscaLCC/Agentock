@@ -1,6 +1,6 @@
 # Plano de implementação — Agentock
 
-> Estado em 2026-11-14 (rev. 6 — **todas as fases implementadas e validadas com dados reais**). Documento vivo.
+> Estado em 2026-11-15 (rev. 7 — **todas as fases implementadas e validadas com dados reais**; + análise de insiders). Documento vivo.
 
 ## 0. Estado
 
@@ -18,7 +18,7 @@
 | 8 — Universo e escala | ✅ | top 500 em ~8 s, 18/18 megacaps de referência, estimativa de custo antes de correr |
 | 9 — Bot Telegram + histórico | ✅ código | `tools/telegram_bot.py` (só o teu chat); página HTML de histórico gerada |
 
-**62 testes unitários** (`python -m unittest discover -s tests -t .`) + testes reais (`tools/smoke_data.py`, `tools/probe_*.py`).
+**107 testes unitários** (`python -m unittest discover -s tests -t .`) + testes reais (`tools/smoke_data.py`, `tools/probe_*.py`).
 
 ### Pendências
 1. ~~Créditos da API esgotados~~ → resolvido com `AGENTOCK_CLAUDE_AUTH=subscription` (D21): os agentes usam o login do Claude Code. A `ANTHROPIC_API_KEY` está nas variáveis de ambiente do **Windows** (não no `.env`) e ficou intacta.
@@ -74,6 +74,8 @@ Custo equivalente observado (o que custaria em créditos da API; com a subscriç
 | D19 | Universo: cotação principal = a de **maior liquidez** (valor negociado/dia em USD) | a pontuação por moeda escolhia APC.DE em vez de AAPL e ADRs/locais mal |
 | D20 | GuruFocus por `requires_env` (MCP condicional) | o token existe mas não tem acesso à API |
 | D21 | **Agentes LLM autenticados pela subscrição do Claude Code** (`AGENTOCK_CLAUDE_AUTH=subscription`): o Agentock retira a `ANTHROPIC_API_KEY` só do seu processo; `api` volta aos créditos | créditos da API esgotados; decisão do utilizador. A variável do Windows não foi apagada para não afetar outros programas |
+| D22 | **Insiders por script, sem LLM** (`insiders_agent`, 2.20): só compras/vendas em bolsa contam; vendas em plano 10b5-1 (ou com pré-aviso na Coreia) pesam pouco; score −2…+2 por regras explícitas (compra em grupo ≥ 3 insiders em 30 dias +2; gestão de topo ≥ 100 mil USD ou compras ≥ 0,01% da market cap +1; vendas discricionárias ≥ 0,1% da market cap ou ≥ 3 vendedores −1; ≥ 0,5% −2). Fontes: SEC Form 4 (EUA) → Finnhub; DART (Coreia); restantes mercados `available: false`. O sentimento recebe este resultado em vez de chamar `mcp insider` | dados estruturados → código verificável e testado; menos tokens; o MSPR da Finnhub mistura vendas planeadas e atribuições |
+| D23 | **Coreia: motivo lido do documento DART**, não só do resumo `elestock` (variação líquida). Os 80 relatórios com mais ações por 180 dias são lidos (cache em disco, um relatório entregue não muda); 장내매수/매도 → P/S; 수증/증여/상속/상여/스톡옵션 fora do sinal; **장외 (fora de bolsa) fora do sinal** | Samsung: as 18,8 M ações de 이재용 em out–nov 2026 eram uma doação e uma compra fora de bolsa à mãe, não compras em bolsa — o resumo dava "positivo" por engano |
 
 ---
 
@@ -91,8 +93,8 @@ Custo equivalente observado (o que custaria em créditos da API; com a subscriç
 
 ```
 1  profile
-2  analysts · asia/europe/us_lead · competitors · health · indicators · ipo_lifecycle · price_targets · relations
-   · news_4h · news_24h · news_7d · news_30d
+2  analysts · asia/europe/us_lead · competitors · health · indicators · insiders · ipo_lifecycle · price_targets
+   · relations · news_4h · news_24h · news_7d · news_30d
 3  calendar · comps · market_share · sentiment · technical
 4  fundamental_data · timing
 5  forecast_stats · fundamental
@@ -121,11 +123,11 @@ Fluxos `ipos` (ipo_web → ipo_calendar) e `ipo` (pre_ipo → ipo_memory).
 | Alpha Vantage | IPOs (CSV), EOD | último recurso |
 | Marketstack | EUA EOD | último recurso |
 | akshare | China: notícias Eastmoney | China (secundária) |
-| SEC EDGAR | EUA/ADRs: filings, Exhibit 21/8, pesquisa de prospetos, lock-up do 424B4 | documentos oficiais |
-| OpenDART | Coreia: comunicados | documentos oficiais |
+| SEC EDGAR | EUA/ADRs: filings, Exhibit 21/8, pesquisa de prospetos, lock-up do 424B4, **Form 4 (insiders, com cargo e plano 10b5-1)** | documentos oficiais |
+| OpenDART | Coreia: comunicados, **participações de executivos e grandes acionistas (elestock + documento com o motivo)** | documentos oficiais |
 
 Capacidades: quote, eod, intraday, profile, news (merge), analyst_recs, price_targets, upgrades, peers, calendar, search, fx,
-ipo_calendar (merge), financials, scores, dcf, insider, filings, subsidiaries, sec_search, lockup.
+ipo_calendar (merge), financials, scores, dcf, insider, insider_transactions, filings, subsidiaries, sec_search, lockup.
 Validação cruzada: Piotroski e Altman próprios = FMP na AAPL (9 = 9; 13,15 vs 13,16); fechos iguais entre 2 fontes.
 
 ---
@@ -145,7 +147,7 @@ Limites diários tratados: China ±10% (±20% STAR/ChiNext), Coreia ±30%.
 
 ---
 
-## 5. Catálogo de agentes (35)
+## 5. Catálogo de agentes (36)
 
 S = script · L = LLM (modelo) · artefactos: sk skill, sc script, sub subagentes, tp template, mcp tools do router
 
@@ -158,7 +160,7 @@ S = script · L = LLM (modelo) · artefactos: sk skill, sc script, sub subagente
 | 2.7 | health_momentum_agent | S | — | 12 h |
 | 2.8a / 2.8 | technical_indicators_agent / technical_agent | S / L haiku | sk technical-reading | 1 h |
 | 2.9a / 2.9 | fundamental_data_agent / fundamental_agent | S / L sonnet | sk fundamental-framework | 12 h |
-| 2.10 | sentiment_agent | L sonnet | sk sentiment-rubric, mcp insider | — |
+| 2.10 | sentiment_agent | L sonnet | sk sentiment-rubric (recebe o `insiders_agent`) | — |
 | 2.11 | market_share_agent | L sonnet | sk market-structure | 30 dias, **por indústria** |
 | 2.12a / 2.12b | competitors_agent / comps_agent | L sonnet / S | sk peer-selection, mcp peers/search/profile | 7 dias / 1 dia |
 | 2.13 | relations_agent | L sonnet | sk relations-sources, mcp subsidiaries/filings | 30 dias |
@@ -167,6 +169,7 @@ S = script · L = LLM (modelo) · artefactos: sk skill, sc script, sub subagente
 | 2.16 / 2.17 | analysts_agent / price_targets_agent | S | — | 6 h |
 | 2.18a / 2.18 | forecast_stats_agent / forecast_agent | S / L opus | sk scenarios | — |
 | 2.19 | rating_agent (v2) / rating_v1_agent | L opus | sk rating-rubric, sub bull/bear (sonnet), file_inputs | — |
+| 2.20 | insiders_agent | S | core/data/insiders.py (parsers Form 4 e DART), regras D22; cartão (barra) + botão 👔 Insiders | 6 h |
 | — | guard_agent | S | verificação de números PT/EN + unidades | — |
 | 3 / 4 | memory_agent / change_alert_agent | S | diff de razões | — |
 | I.1 | ipo_web_agent + ipo_calendar_agent | L sonnet + S | — | 12 h |
@@ -201,3 +204,6 @@ S = script · L = LLM (modelo) · artefactos: sk skill, sc script, sub subagente
 - `cache_key` com o perfil inteiro nunca acertava (o preço muda); usar caminhos (`profile.symbol`).
 - Input `run_id` colidia com o argumento do `run_agent`; inputs passam como dicionário.
 - Universo: escolha da cotação principal por moeda falhava (APC.DE, ADRs); passou a ser por liquidez.
+- SEC: a lista de entregas de uma empresa inclui os Form 4 em que ela é a **declarante** noutra empresa (ex.: Berkshire como acionista da OXY) → filtrar por `issuerCik`.
+- DART `elestock` dá só a variação líquida: um aumento de 11 M ações era uma doação (수증) → ler o motivo no documento do relatório (D23).
+- Cache em disco de dados derivados: guardar o dado bruto (o motivo) e recalcular o código ao ler, para uma correção do mapeamento valer também para a cache.

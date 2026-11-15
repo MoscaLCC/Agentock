@@ -1,6 +1,6 @@
 ---
 name: sentiment-rubric
-description: Rubrica para medir o sentimento de uma ação a partir de notícias (tom × relevância), consenso de analistas e insiders (MSPR), com tendência entre janelas.
+description: Rubrica para medir o sentimento de uma ação a partir de notícias (tom × relevância), consenso de analistas e insiders (score do insiders_agent), com tendência entre janelas.
 ---
 
 # Rubrica de sentimento
@@ -13,8 +13,10 @@ description: Rubrica para medir o sentimento de uma ação a partir de notícias
 ## Analistas
 - `consensus_score` (−2…+2) ÷ 2 → −1…+1. Ajusta ±0,1 pela `trend` e pelo saldo de `changes_90d`.
 
-## Insiders (EUA)
-- MSPR (−100…+100) ÷ 100. Compras de insiders são sinal mais forte do que vendas (vendas são muitas vezes planeadas).
+## Insiders (EUA via SEC Form 4, Coreia via DART)
+- `score` do insiders_agent (−2…+2) ÷ 2 → −1…+1. Não recalcules: as regras (compra em grupo, gestão de topo,
+  vendas discricionárias em % da market cap, planos 10b5-1/pré-aviso) já estão aplicadas.
+- O MSPR da Finnhub (`mspr_avg_3m`, EUA) é só contexto: mistura vendas planeadas e atribuições.
 
 ## Agregado
 - 50% notícias, 35% analistas, 15% insiders (redistribui os pesos se faltar alguma fonte).

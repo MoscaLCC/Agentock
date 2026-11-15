@@ -65,7 +65,7 @@ class FMP(Provider):
 
 class Finnhub(Provider):
     name, env = "finnhub", ("FINNHUB_API_KEY",)
-    capabilities = frozenset({"quote", "news", "analyst_recs", "ipo_calendar", "insider"})
+    capabilities = frozenset({"quote", "news", "analyst_recs", "ipo_calendar", "insider", "insider_transactions"})
     BASE = "https://finnhub.io/api/v1/"
 
     def _get(self, path, **q):
@@ -91,6 +91,16 @@ class Finnhub(Provider):
         hist = [{"period": r.get("period"), "strong_buy": r.get("strongBuy"), "buy": r.get("buy"),
                  "hold": r.get("hold"), "sell": r.get("sell"), "strong_sell": r.get("strongSell")} for r in rows[:4]]
         return {**hist[0], "history": hist}
+
+    def insider_transactions(self, s, days: int = 180):
+        """Alternativa ao Form 4 da SEC: sem cargo nem indicação de plano 10b5-1."""
+        from ..insiders import SEC_CODES
+        rows = (self._get("stock/insider-transactions", symbol=s, **{"from": days_ago(days)}) or {}).get("data") or []
+        return [{"date": r.get("transactionDate"), "name": r.get("name"), "role": None, "role_class": "other",
+                 "code": r.get("transactionCode"), "kind": SEC_CODES.get(r.get("transactionCode"), "outro"),
+                 "shares": abs(r.get("change") or 0), "price": num(r.get("transactionPrice")) or None,
+                 "acquired": (r.get("change") or 0) > 0, "planned": False, "owned_after": num(r.get("share")),
+                 "source": "finnhub"} for r in rows if not r.get("isDerivative")]
 
     def insider(self, s, months: int = 6):
         d = self._get("stock/insider-sentiment", symbol=s, **{"from": days_ago(months * 31),

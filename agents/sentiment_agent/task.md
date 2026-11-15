@@ -12,4 +12,6 @@ Notícias 30 dias: $news_30d
 
 Analistas: $analysts
 
+Insiders: $insiders
+
 Mede o sentimento e devolve o resultado estruturado.

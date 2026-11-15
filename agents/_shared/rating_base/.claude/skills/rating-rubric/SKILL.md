@@ -18,12 +18,17 @@ description: Rubrica de classificação de ações do Agentock (escala de 5 nív
 | Fundamentais e valorização | fundamental, health, price_targets | 30% |
 | Analistas e alvos | analysts, price_targets | 15% |
 | Técnica e momentum | technical, indicators, health.momentum | 15% |
-| Notícias e sentimento | news_*, sentiment | 15% |
+| Notícias, sentimento e insiders | news_*, sentiment, insiders | 15% |
 | Posição competitiva | competitors, market_share, relations | 10% |
 | Timing e eventos | timing, calendar, leads | 10% |
 | Cenários | forecast | 5% |
 
 Dimensões ausentes (`null`) não contam para o peso; mas cada uma ausente reduz a confiança.
+
+Insiders (`insiders`, EUA e Coreia): `score` ≥ 1 (compra em grupo ou da gestão de topo) é dos sinais mais fiáveis
+e merece uma razão; `score` ≤ −1 (vendas discricionárias relevantes) merece um risco. Vendas em plano 10b5-1 ou com
+pré-aviso, atribuições, bónus em ações e doações não são opinião sobre o preço. `available: false` não é lacuna
+(não reduz a confiança): há mercados sem fonte.
 
 ## Calibração da confiança (0–1)
 - Começa em 0,7. −0,05 por dimensão ausente. −0,1 se as dimensões se contradizem fortemente.

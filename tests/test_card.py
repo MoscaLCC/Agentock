@@ -28,6 +28,12 @@ def fake_outputs(price=206000.0):
                   "peers": [{"symbol": "000660.KS", "forward_pe": 5.0, "ev_to_ebitda": 4.2, "operating_margin": 40.0,
                              "ret_12m_pct": 120.0}],
                   "medians": {"forward_pe": 15.6, "ev_to_ebitda": 9.9, "operating_margin": 20.0, "ret_12m_pct": 10.0}},
+        "insiders": {"available": True, "source": "dart", "score": 1, "label": "positivo", "currency": "KRW",
+                     "signals": ["Gestão de topo comprou: Presidente executivo (노태문), 630 M KRW em 90 dias"],
+                     "windows": {"30": {"buys": 1, "buy_value": 6.3e8, "sells": 0, "sell_value": 0, "net_value": 6.3e8}},
+                     "notable": [{"date": "2026-11-12", "name": "이재용", "role": "Chairman", "kind": "doação recebida",
+                                  "value": 2.3e12, "planned": False, "note": "doador: 홍라희"}],
+                     "routine_180d": {"atribuições": 72, "doações": 1}},
         "news_24h": {"items": [{"title": "Samsung em conversações para comprar a Modine", "url": "https://x.com/a",
                                 "source": "Bloomberg", "published_at": "2026-11-13T08:18:00Z", "relevance": 5,
                                 "tone": "positivo"}]},
@@ -86,7 +92,7 @@ class SectionTests(unittest.TestCase):
     def test_buttons_fit_telegram_limits(self):
         kb = sections.buttons(self.rid)
         datas = [b["callback_data"] for row in kb["inline_keyboard"] for b in row]
-        self.assertEqual(len(datas), 6)
+        self.assertEqual(len(datas), 7)
         self.assertTrue(all(len(d.encode()) <= 64 for d in datas))
 
     def test_caption_is_short(self):
@@ -95,7 +101,7 @@ class SectionTests(unittest.TestCase):
         self.assertLess(len(cap), 1024)
 
     def test_tables_fit_phone_width(self):
-        for txt in (sections.sec_peers(self.data), sections.sec_scenarios(self.data)):
+        for txt in (sections.sec_peers(self.data), sections.sec_scenarios(self.data), sections.sec_insiders(self.data)):
             pre = txt.split("<pre>")[1].split("</pre>")[0]
             self.assertTrue(all(len(line) <= 37 for line in pre.split("\n")), pre)
 

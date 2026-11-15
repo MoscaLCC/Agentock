@@ -14,6 +14,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from ..http import ProviderError, fetch
+from ..insiders import expand_dart, parse_dart_document, parse_dart_elestock, parse_form4
 from ..markets import base_code, market_of
 from .base import Provider
 
@@ -38,7 +39,7 @@ def _strip_html(text: str) -> str:
 
 class SEC(Provider):
     name, env = "sec", ("SEC_USER_AGENT",)
-    capabilities = frozenset({"filings", "subsidiaries", "sec_search", "lockup"})
+    capabilities = frozenset({"filings", "subsidiaries", "sec_search", "lockup", "insider_transactions"})
     LOCKUP_RX = [
         re.compile(r"(\d{2,3})\s*days\s+after\s+the\s+date\s+of\s+(?:this|the\s+final)\s+prospectus", re.I),
         re.compile(r"lock[- ]?up\s+period[^.]{0,200}?(\d{2,3})\s+days", re.I),
@@ -85,6 +86,36 @@ class SEC(Provider):
 
     def _recent(self, cik: int) -> dict:
         return self._get(f"https://data.sec.gov/submissions/CIK{cik:010d}.json")["filings"]["recent"]
+
+    def insider_transactions(self, s, days: int = 180, max_filings: int = 60):
+        """Form 4 dos últimos N dias (emitentes dos EUA; emitentes estrangeiros/ADRs não entregam Form 4).
+        Cada Form 4 fica em cache em disco (data/sec_form4/): um documento entregue não muda."""
+        if market_of(s) != "US":
+            raise ProviderError("notfound", "Form 4 só para emitentes dos EUA")
+        cik = self._cik(s)
+        rec = self._recent(cik)
+        cutoff = (date.today() - timedelta(days=days)).isoformat()
+        out, n = [], 0
+        for i, form in enumerate(rec["form"]):
+            if form not in ("4", "4/A"):
+                continue
+            if rec["filingDate"][i] < cutoff or n >= max_filings:
+                break
+            out += self._form4(cik, rec["accessionNumber"][i].replace("-", ""), rec["primaryDocument"][i])
+            n += 1
+        # a lista da empresa inclui Form 4 em que ela é a declarante (acionista >10% de outra empresa): fora
+        return [t for t in out if (t["date"] or "") >= cutoff and t.get("issuer_cik") in (None, cik)]
+
+    def _form4(self, cik: int, acc: str, primary: str) -> list[dict]:
+        path = DATA / "sec_form4_v2" / f"{acc}.json"
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+        time.sleep(0.12)  # regra de acesso justo da SEC: até 10 pedidos por segundo
+        xml = self._get(f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc}/{primary.split('/')[-1]}", raw=True)
+        txs = parse_form4(xml)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(txs, ensure_ascii=False), encoding="utf-8")
+        return txs
 
     def filings(self, s, forms: str | None = None, limit: int = 20):
         if market_of(s) != "US":
@@ -144,8 +175,45 @@ class SEC(Provider):
 
 class DART(Provider):
     name, env = "dart", ("DART_API_KEY",)
-    capabilities = frozenset({"filings"})
+    capabilities = frozenset({"filings", "insider_transactions"})
     BASE = "https://opendart.fss.or.kr/api/"
+
+    def insider_transactions(self, s, days: int = 180, max_docs: int = 80):
+        """Relatórios de participações de executivos e grandes acionistas (elestock). O resumo não diz o motivo
+        (compra, doação, bónus em ações…): lê-se o documento dos `max_docs` relatórios com mais ações; os restantes
+        ficam como INC/DEC (motivo desconhecido, fora do sinal). O elestock devolve o histórico inteiro (lento)."""
+        if market_of(s) != "KR":
+            raise ProviderError("notfound", "DART só para ações coreanas")
+        q = urllib.parse.urlencode({"crtfc_key": self.key(), "corp_code": self._corp_code(s)})
+        d = fetch(f"{self.BASE}elestock.json?{q}", timeout=200, retries=1)
+        if d.get("status") not in ("000", "013"):  # 013 = sem dados
+            raise ProviderError("error", f"DART {d.get('status')} {d.get('message')}")
+        cutoff = (date.today() - timedelta(days=days)).isoformat()
+        summary = parse_dart_elestock(d.get("list", []), cutoff)
+        read = {t["rcept_no"] for t in sorted(summary, key=lambda t: t["shares"], reverse=True)[:max_docs]}
+        out = []
+        for t in summary:
+            rows = self._doc_rows(t["rcept_no"]) if t["rcept_no"] in read else None
+            out += expand_dart(t, rows) if rows else [t]
+        return [t for t in out if (t["date"] or "") >= cutoff]
+
+    def _doc_rows(self, rcept_no: str) -> list[dict] | None:
+        path = DATA / "dart_docs" / f"{rcept_no}.json"
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+        import urllib.request
+        q = urllib.parse.urlencode({"crtfc_key": self.key(), "rcept_no": rcept_no})
+        try:
+            req = urllib.request.Request(f"{self.BASE}document.xml?{q}", headers={"User-Agent": "Agentock/0.1"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                zf = zipfile.ZipFile(io.BytesIO(r.read()))
+            rows = parse_dart_document(zf.read(zf.namelist()[0]).decode("utf-8", "ignore"))
+        except (OSError, zipfile.BadZipFile, KeyError, IndexError):
+            return None  # fica a linha-resumo (motivo desconhecido)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+        time.sleep(0.05)
+        return rows
 
     def _corp_code(self, symbol: str) -> str:
         def build_map():

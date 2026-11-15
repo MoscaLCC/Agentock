@@ -24,6 +24,7 @@ dossier: &dossier
   news_24h: $news_24h
   news_7d: $news_7d
   news_30d: $news_30d
+  insiders: $insiders
   sentiment: $sentiment
   timing: $timing
   forecast: $forecast
@@ -44,6 +45,7 @@ flows:
       asia_lead:        {agent: asia_lead_agent, inputs: {profile: $profile}, timeout: 240}
       europe_lead:      {agent: europe_lead_agent, inputs: {profile: $profile}, timeout: 240}
       us_lead:          {agent: us_lead_agent, inputs: {profile: $profile}, timeout: 240}
+      insiders:         {agent: insiders_agent, inputs: {profile: $profile}, timeout: 600}  # DART: 1.ª vez lenta
       # 1b — notícias (LLM, multilíngue)
       news_4h:          {agent: news_4_hours_agent, inputs: {ticker: $profile.symbol, hours: $hours}}
       news_24h:         {agent: news_24_hours_agent, inputs: {ticker: $profile.symbol}}
@@ -60,7 +62,7 @@ flows:
       sentiment:
         agent: sentiment_agent
         inputs: {profile: $profile, news_4h: $news_4h, news_24h: $news_24h, news_7d: $news_7d,
-                 news_30d: $news_30d, analysts: $analysts}
+                 news_30d: $news_30d, analysts: $analysts, insiders: $insiders}
       # 3 — síntese
       timing:
         agent: timing_agent

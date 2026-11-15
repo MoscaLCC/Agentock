@@ -4,6 +4,6 @@ Regras:
 - Carrega a skill `sentiment-rubric`.
 - Notícias: usa o `tone` e a `relevance` dos itens das 4 janelas (pondera mais os relevantes). A tendência compara as janelas curtas (4h/24h) com as longas (7d/30d).
 - Analistas: usa `consensus_score`, `trend` e `changes_90d`.
-- Insiders: só nos EUA — chama `mcp__market__insider` com o símbolo. Fora dos EUA, `insiders.score = null` e diz que não há dados.
+- Insiders: usa o resultado do `insiders_agent` (já calculado com regras explícitas: só compras/vendas em bolsa, vendas pré-planeadas com peso baixo). `insiders.score` = `score` ÷ 2; `basis` = o primeiro sinal. Se `available` for falso, `insiders.score = null` e diz porquê (`reason`).
 - Sentimento social (redes) não está disponível nas fontes atuais — não o inventes.
 - Usa só números dos dados. Português de Portugal.

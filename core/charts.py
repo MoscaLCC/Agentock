@@ -220,7 +220,8 @@ def stock_card(data: dict, bars: list[dict]) -> bytes:
 
     dims = [("Técnica", g("technical", "score")), ("Fundamental", g("fundamental", "score")),
             ("Sentimento", g("sentiment", "score")), ("Timing", g("timing", "score")),
-            ("Analistas", g("analysts", "consensus_score")), ("Saúde financeira", scale100(g("health", "health_score"))),
+            ("Analistas", g("analysts", "consensus_score")), ("Insiders", g("insiders", "score")),
+            ("Saúde financeira", scale100(g("health", "health_score"))),
             ("Momentum", scale100(g("health", "momentum_score")))]
     fig.text(0.05, _y(5.40), "Scores por dimensão  (−2 negativo · +2 positivo)", fontsize=9, color=t["muted"],
              va="center")

@@ -72,6 +72,10 @@ routes:
   insider:
     US: [finnhub]
     default: []
+  insider_transactions:          # SEC Form 4 (cargo + plano 10b5-1) → Finnhub; Coreia: DART
+    US: [sec, finnhub]
+    KR: [dart]
+    default: []
   filings:
     US: [sec]
     KR: [dart]
@@ -105,6 +109,7 @@ ttl:
   scores: 86400
   dcf: 86400
   insider: 86400
+  insider_transactions: 21600
   filings: 21600
   subsidiaries: 2592000
   sec_search: 43200
