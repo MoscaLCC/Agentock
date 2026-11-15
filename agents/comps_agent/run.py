@@ -1,11 +1,15 @@
 """2.12b — comparáveis. Números por código (router); o LLM só escolheu os peers."""
 import statistics
+from concurrent.futures import ThreadPoolExecutor
 
 from core.data import DataUnavailable, get_router
-from core.util import as_dict, r2
+from core.util import as_dict, major_currency, r2
 
 METRICS = ("trailing_pe", "forward_pe", "ev_to_ebitda", "price_to_book", "gross_margin", "operating_margin",
            "revenue_growth", "roe")
+
+
+MULTIPLES = ("trailing_pe", "forward_pe", "ev_to_ebitda", "price_to_book")  # negativos não entram nas medianas
 
 
 def row(r, symbol: str) -> dict | None:
@@ -27,10 +31,9 @@ def row(r, symbol: str) -> dict | None:
         out["ret_12m_pct"] = r2((c[-1] / c[-253] - 1) * 100) if len(c) > 253 else None
     except DataUnavailable:
         out["ret_3m_pct"] = out["ret_12m_pct"] = None
-    cur = (out["currency"] or "USD").upper()
-    if cur == "GBP" or out["currency"] in ("GBp", "GBX"):
-        cur = "GBP"
-    mc = out["market_cap"] / 100 if out["currency"] in ("GBp", "GBX") and out["market_cap"] else out["market_cap"]
+    cur, div = major_currency(out["currency"] or "USD")
+    mc = out["market_cap"] / div if out["market_cap"] else out["market_cap"]   # fast_info: em pence em Londres
+    out["market_cap"] = mc
     try:
         rate = 1.0 if cur == "USD" else r.get("fx", f"USD/{cur}").data["rate"]
         out["market_cap_usd"] = r2(mc / rate, 0) if mc and rate else None
@@ -42,7 +45,7 @@ def row(r, symbol: str) -> dict | None:
 def medians(rows: list[dict]) -> dict:
     out = {}
     for m in METRICS + ("ret_3m_pct", "ret_12m_pct"):
-        vals = [x[m] for x in rows if x.get(m) is not None and (m not in ("trailing_pe", "forward_pe") or x[m] > 0)]
+        vals = [x[m] for x in rows if x.get(m) is not None and (m not in MULTIPLES or x[m] > 0)]
         out[m] = r2(statistics.median(vals)) if vals else None
     return out
 
@@ -55,10 +58,13 @@ def relative(target: dict, med: dict) -> dict:
 def run(profile, competitors):
     p, comp = as_dict(profile), as_dict(competitors)
     r = get_router()
-    target = row(r, p["symbol"])
+    plist = comp.get("peers") or []
+    # cada linha são 3 pedidos (perfil, contas, preços): em série eram 15,8 s a frio para 8 peers; assim ~5 s
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        rows = list(pool.map(lambda s: row(r, s), [p["symbol"]] + [x["symbol"] for x in plist]))
+    target = rows[0]
     peers, dropped = [], []
-    for peer in comp.get("peers") or []:
-        x = row(r, peer["symbol"])
+    for peer, x in zip(plist, rows[1:]):
         if x is None:
             dropped.append({"symbol": peer["symbol"], "reason": "sem dados no router"})
             continue

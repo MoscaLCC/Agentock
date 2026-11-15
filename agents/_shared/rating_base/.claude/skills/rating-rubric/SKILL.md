@@ -18,12 +18,14 @@ description: Rubrica de classificação de ações do Agentock (escala de 5 nív
 | Fundamentais e valorização | fundamental, health, price_targets | 30% |
 | Analistas e alvos | analysts, price_targets | 15% |
 | Técnica e momentum | technical, indicators, health.momentum | 15% |
-| Notícias, sentimento e insiders | news_*, sentiment, insiders | 15% |
-| Posição competitiva | competitors, market_share, relations | 10% |
+| Notícias, sentimento e insiders | news, sentiment, insiders | 15% |
+| Posição competitiva | comps, market_share, relations | 10% |
 | Timing e eventos | timing, calendar, leads | 10% |
 | Cenários | forecast | 5% |
 
-Dimensões ausentes (`null`) não contam para o peso; mas cada uma ausente reduz a confiança.
+Dimensões ausentes (`null`, listadas em `gaps`) não contam para o peso; mas cada uma ausente reduz a confiança.
+Em `news.items`, `w` é a janela do item (4h, 24h, 7d, 30d) e `por_triar: true` marca títulos acabados de sair,
+ainda sem relevância nem tom: não os uses como razão.
 
 Insiders (`insiders`, EUA e Coreia): `score` ≥ 1 (compra em grupo ou da gestão de topo) é dos sinais mais fiáveis
 e merece uma razão; `score` ≤ −1 (vendas discricionárias relevantes) merece um risco. Vendas em plano 10b5-1 ou com
@@ -45,6 +47,9 @@ pré-aviso, atribuições, bónus em ações e doações não são opinião sobr
 
 ## Regras obrigatórias
 - 2 a 5 razões, cada uma ligada a uma dimensão e com o número do dossier que a suporta.
+- `evidence`: para cada número citado nas razões e nos riscos, o número tal como o escreveste e o caminho do
+  campo do dossier de onde vem. Ex.: `{"number": "2,66", "path": "fundamental_data.valuation.forward_pe"}`.
+  Em listas usa o índice (`technical.signals[2]`, `news.items[0]`). Um número sem campo de origem não se cita.
 - 2 a 4 riscos concretos.
 - Não inventes números. Percentagens e preços só se estiverem no dossier.
 - `bull_case` / `bear_case`: uma frase cada.

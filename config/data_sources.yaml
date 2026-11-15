@@ -109,7 +109,8 @@ ttl:
   scores: 86400
   dcf: 86400
   insider: 86400
-  insider_transactions: 21600
+  insider_transactions: 129600   # 36 h: a DART devolve o histórico inteiro (~100 s na Samsung) e os relatórios saem com dias de atraso;
+                                 # o bot renova-os de madrugada para as ações da lista (ver Bot.maintenance)
   filings: 21600
   subsidiaries: 2592000
   sec_search: 43200

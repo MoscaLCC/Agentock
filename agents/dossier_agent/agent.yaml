@@ -1,0 +1,8 @@
+name: dossier_agent
+kind: script
+description: Dossier compacto para a classificação — junta os outputs dos nós, tira metadados e repetições, deixa as lacunas a null (core/dossier.py). É exatamente o que o juiz, o bull e o bear leem e o que o guard confere.
+inputs: [profile]
+defaults: {indicators: null, technical: null, calendar: null, analysts: null, price_targets: null, health: null,
+           fundamental: null, fundamental_data: null, comps: null, market_share: null, relations: null,
+           ipo_lifecycle: null, asia_lead: null, europe_lead: null, us_lead: null, news: null, insiders: null,
+           sentiment: null, timing: null, forecast: null}

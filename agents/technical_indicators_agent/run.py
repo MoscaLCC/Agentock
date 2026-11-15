@@ -67,7 +67,7 @@ def compute(bars: list[dict], symbol: str = "") -> dict:
 
     bb = None
     if n >= 20:
-        mid, sd = c.rolling(20).mean().iloc[-1], c.rolling(20).std().iloc[-1]
+        mid, sd = c.rolling(20).mean().iloc[-1], c.rolling(20).std(ddof=0).iloc[-1]  # Bollinger: populacional
         up, lo = mid + 2 * sd, mid - 2 * sd
         bb = {"upper": r2(up), "mid": r2(mid), "lower": r2(lo), "pct_b": r2((last - lo) / (up - lo) if up != lo else None),
               "width_pct": r2((up - lo) / mid * 100 if mid else None)}

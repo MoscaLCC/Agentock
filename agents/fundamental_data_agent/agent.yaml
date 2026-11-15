@@ -3,5 +3,4 @@ kind: script
 description: 2.9a — múltiplos, crescimento, margens, balanço e DCF próprio (pressupostos explícitos); DCF do FMP nos EUA para comparação.
 inputs: [profile]
 defaults: {comps: null}
-cache_ttl: 43200
-cache_key: [profile.symbol, comps]
+cache_ttl: 0            # depende do preço; o router já faz cache das contas

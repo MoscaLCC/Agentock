@@ -1,0 +1,9 @@
+name: debate_base
+description: Base do debate da classificação v2 — um analista defende um lado só com o dossier. Os agentes debate_bull e debate_bear definem o lado; correm em paralelo, cada um num só pedido.
+model: claude-sonnet-5-5
+max_turns: 3
+max_budget_usd: 0.4
+inputs: [ticker, dossier]
+tools: []
+output: schema.py:DebateCase
+cache_ttl: 21600          # 6 h, por conteúdo: o mesmo dossier dá o mesmo caso

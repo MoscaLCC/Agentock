@@ -1,9 +1,0 @@
-name: news_30_days_agent
-extends: _shared/news_base
-description: 2.4 — notícias dos últimos 30 dias (só acontecimentos marcantes; cache 24 h). As APIs cobrem ~7 dias, por isso a pesquisa web pesa mais.
-defaults:
-  hours: 720
-  focus: "só os acontecimentos marcantes do mês: resultados, guidance, M&A, regulação, mudanças de gestão, contratos grandes"
-  max_items: 15
-max_turns: 30
-cache_ttl: 86400

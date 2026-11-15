@@ -2,11 +2,11 @@
 
   python flow.py AAPL                     # fluxo 'ticker' para uma ação (aceita nome: "Samsung", ou código: 005930)
   python flow.py AAPL --rating v2         # classificação com debate bull/bear (v1 = um só LLM)
-  python flow.py AAPL --hours 48          # parâmetros do trigger (atalho de --set hours=48)
   python flow.py AAPL --set k=v           # qualquer parâmetro do fluxo
   python flow.py AAPL --only indicators   # só um nó
   python flow.py AAPL --dry-run           # mostra o DAG sem correr
   python flow.py AAPL --no-cache          # ignora a cache de outputs
+  python flow.py AAPL --run-id RUN_ID     # retoma uma análise interrompida (os nós já feitos não se repetem)
   python flow.py AAPL --verbose           # mostra o output de todos os nós
   python flow.py --universe --top 20      # as N maiores (ver também --parallel, --resume, --yes)
   python flow.py --ipos [--days 30]       # calendário de IPOs + análise de cada IPO acima do limiar
@@ -27,6 +27,11 @@ from core.runner import to_jsonable
 RATING = {"v1": "rating_v1_agent", "v2": "rating_agent"}
 
 
+def rating_params(version: str) -> dict:
+    """v2 = debate (bull e bear em paralelo + juiz); v1 = um só LLM, sem debate."""
+    return {"rating_agent": RATING[version], "rating_version": version, "debate": version == "v2"}
+
+
 def print_report(label: str, report, verbose: bool = False, final: str = "guard") -> None:
     print(f"\n=== {label}  run {report.run_id}")
     prof = report.results.get("profile")
@@ -37,7 +42,10 @@ def print_report(label: str, report, verbose: bool = False, final: str = "guard"
         dur = f"{(r.duration_ms or 0) / 1000:.1f}s"
         flag = "cache" if r.cached else r.status
         print(f"  {name:16} {flag:8} {cost:>9} {dur:>8}  {(r.error or '')[:110]}")
-    print(f"  {'total':16} {'':8} ${report.cost_usd:.4f}")
+    tok = report.tokens()
+    print(f"  {'total':16} {'':8} ${report.cost_usd:.4f} {report.duration_s:>7.1f}s  tokens: "
+          f"{sum(tok.values()):,} (input {tok['input']:,} · cache write {tok['cache_write']:,} · "
+          f"cache read {tok['cache_read']:,} · output {tok['output']:,})".replace(",", " "))
     shown = report.results.items() if verbose else [(final, report.results.get(final))]
     for name, r in shown:
         if r is not None and r.status == "ok":
@@ -56,17 +64,16 @@ def parse_sets(items: list[str]) -> dict:
 
 
 async def run_ticker(ticker: str, a, params: dict):
-    report = await run_flow(a.flow, {"ticker": ticker, **params}, only=a.only, use_cache=not a.no_cache)
+    report = await run_flow(a.flow, {"ticker": ticker, **params}, only=a.only, use_cache=not a.no_cache,
+                            run_id=a.run_id, resume=bool(a.run_id))
     print_report(ticker, report, a.verbose)
     return report
 
 
 def build_params(a) -> dict:
     params = parse_sets(a.set)
-    if a.hours is not None:
-        params["hours"] = a.hours
     if a.rating:
-        params.update(rating_agent=RATING[a.rating], rating_version=a.rating)
+        params.update(rating_params(a.rating))
     return params
 
 
@@ -106,9 +113,9 @@ def cli(argv=None):
     p.add_argument("ticker", nargs="?")
     p.add_argument("--flow", default="ticker")
     p.add_argument("--rating", choices=["v1", "v2"])
-    p.add_argument("--hours", type=int)
     p.add_argument("--set", action="append", metavar="K=V")
     p.add_argument("--only")
+    p.add_argument("--run-id", help="retoma a análise com este run_id")
     p.add_argument("--no-cache", action="store_true")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--verbose", action="store_true")

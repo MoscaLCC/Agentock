@@ -16,4 +16,6 @@ load_dotenv(ENV_PATH)
 
 CLAUDE_AUTH = os.environ.get("AGENTOCK_CLAUDE_AUTH", "").strip().lower()
 if CLAUDE_AUTH == "subscription":
-    os.environ.pop("ANTHROPIC_API_KEY", None)  # não mexe na variável do Windows, só neste processo e nos filhos
+    # não mexe nas variáveis do Windows, só neste processo e nos filhos; o AUTH_TOKEN tem precedência sobre tudo
+    os.environ.pop("ANTHROPIC_API_KEY", None)
+    os.environ.pop("ANTHROPIC_AUTH_TOKEN", None)

@@ -19,6 +19,13 @@ def by_run(conn, run_id: str) -> dict | None:
     return from_row(conn, row) if row else None
 
 
+def previous(conn, ticker: str, before_id: int) -> dict | None:
+    """A classificação anterior da mesma ação (para dizer o que mudou)."""
+    row = conn.execute("SELECT rating, confidence, ts, price FROM runs WHERE ticker=? AND id < ? ORDER BY id DESC LIMIT 1",
+                       (ticker, before_id)).fetchone()
+    return dict(row) if row else None
+
+
 def from_row(conn, row) -> dict:
     out = run_outputs(conn, row["run_id"]) if row["run_id"] else {}
     return {"run": dict(row), "payload": json.loads(row["payload"] or "{}"),

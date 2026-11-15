@@ -27,12 +27,14 @@ class YFinance(Provider):
         "balance": {"total_assets": ["Total Assets"], "total_liabilities": ["Total Liabilities Net Minority Interest"],
                     "current_assets": ["Current Assets"], "current_liabilities": ["Current Liabilities"],
                     "long_term_debt": ["Long Term Debt"], "total_debt": ["Total Debt"],
-                    "cash": ["Cash And Cash Equivalents", "Cash Cash Equivalents And Short Term Investments"],
+                    # dívida líquida: caixa + investimentos de curto prazo (Samsung: 126 vs 58 biliões KRW)
+                    "cash": ["Cash Cash Equivalents And Short Term Investments", "Cash And Cash Equivalents"],
                     "equity": ["Stockholders Equity", "Common Stock Equity"], "retained_earnings": ["Retained Earnings"],
                     "shares": ["Ordinary Shares Number", "Share Issued"], "working_capital": ["Working Capital"]},
         "cashflow": {"operating_cash_flow": ["Operating Cash Flow"], "capex": ["Capital Expenditure"],
                      "free_cash_flow": ["Free Cash Flow"], "dividends_paid": ["Cash Dividends Paid"],
-                     "buybacks": ["Repurchase Of Capital Stock"]},
+                     "buybacks": ["Repurchase Of Capital Stock"],
+                     "stock_issuance": ["Issuance Of Capital Stock", "Common Stock Issuance"]},
     }
     INFO = {"trailing_pe": "trailingPE", "forward_pe": "forwardPE", "price_to_book": "priceToBook",
             "ev_to_ebitda": "enterpriseToEbitda", "profit_margin": "profitMargins", "gross_margin": "grossMargins",

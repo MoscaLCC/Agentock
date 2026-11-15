@@ -5,6 +5,6 @@ max_turns: 6
 max_budget_usd: 1.0
 inputs: [profile, indicators]
 defaults: {technical: null, calendar: null, sentiment: null, asia_lead: null, europe_lead: null, us_lead: null, ipo_lifecycle: null}
-tools: [Skill]
+tools: []
 output: schema.py:TimingView
-cache_ttl: 0
+cache_ttl: 3600         # por conteúdo de todos os inputs (preço incluído)

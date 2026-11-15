@@ -1,18 +1,6 @@
 name: rating_agent
 extends: _shared/rating_base
-description: 2.19 v2 — debate. Subagentes bull e bear defendem cada lado a partir do dossier; este agente julga.
-max_turns: 14
-max_budget_usd: 4.0
-tools: [Skill, Agent, Read]
-file_inputs: [dossier]          # os subagentes leem o dossier do ficheiro ($dossier_file)
-subagents:
-  bull:
-    description: Analista otimista. Constrói o caso mais forte a FAVOR da ação, só com dados do dossier.
-    prompt: subagents/bull.md
-    tools: [Read]
-    model: claude-sonnet-5-5
-  bear:
-    description: Analista cético. Constrói o caso mais forte CONTRA a ação, só com dados do dossier.
-    prompt: subagents/bear.md
-    tools: [Read]
-    model: claude-sonnet-5-5
+description: 2.19 v2 — juiz do debate. Recebe o dossier e os casos bull e bear (nós paralelos) e decide num só pedido.
+max_turns: 3
+max_budget_usd: 1.5
+defaults: {bull: null, bear: null}

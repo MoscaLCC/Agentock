@@ -1,8 +1,0 @@
-name: news_4_hours_agent
-extends: _shared/news_base
-description: 2.1 — notícias das últimas 4 horas (última hora; sempre fresco).
-defaults:
-  hours: 4
-  focus: "notícias de última hora e factos novos que ainda podem mexer com o preço"
-  max_items: 10
-cache_ttl: 0

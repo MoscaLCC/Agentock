@@ -1,0 +1,7 @@
+name: debate_bear_agent
+extends: _shared/debate_base
+description: 2.19b — debate, lado cético. Constrói o caso mais forte CONTRA a ação, só com dados do dossier.
+defaults:
+  role: cético
+  goal: CONTRA a ação
+  concession: o ponto que mais enfraquece o teu caso

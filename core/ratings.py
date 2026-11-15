@@ -12,7 +12,7 @@ class Rating(IntEnum):
     @property
     def label(self) -> str:
         return {
-            -2: "Venda forte", -1: "Venda", 0: "Hold", 1: "Compra", 2: "Compra forte",
+            -2: "Venda forte", -1: "Venda", 0: "Manter", 1: "Compra", 2: "Compra forte",
         }[int(self)]
 
     @classmethod

@@ -41,10 +41,10 @@ def _send_card(conn, notifier, s: Synthesis, caption: str) -> bool:
     return notifier.send_photo(sections.card_png(data), caption, html=True, buttons=sections.buttons(data["run"]["id"]))
 
 
-def run(synthesis, conn=None, notifier=None, rules: ChangeRules | None = None) -> dict:
+def run(synthesis, conn=None, notifier=None, rules: ChangeRules | None = None, notify: bool = True) -> dict:
     s = synthesis if isinstance(synthesis, Synthesis) else Synthesis.model_validate(as_dict(synthesis))
     conn = conn or db.connect()
-    change = evaluate(conn, s.ticker, Rating.parse(s.rating), rules)
+    change = evaluate(conn, s.ticker, Rating.parse(s.rating), rules, run_id=s.run_id)
     if change is None:
         return {"changed": False}
 
@@ -52,15 +52,22 @@ def run(synthesis, conn=None, notifier=None, rules: ChangeRules | None = None) -
     previous = [messages.first_clause(p) for p in previous_points(conn, s.ticker)]
     diff = reasons_diff(previous, current)
     msg = messages.rating_change(change, s, diff)
-    n = notifier or default_notifier()
-    try:
-        sent = _send_card(conn, n, s, msg) or n.send(msg, html=True)
-    except Exception as e:  # falha de rede não pode perder o registo da alteração
-        sent, msg = False, f"{msg}\n[ERRO ao notificar: {e}]"
-    conn.execute(
-        "INSERT INTO alerts(ticker, ts, old_rating, new_rating, kind, message, sent) VALUES (?,?,?,?,?,?,?)",
-        (change.ticker, db.now(), int(change.old), int(change.new), change.kind, msg, int(sent)),
+    # 1.º grava (sent=0), depois envia: se o processo morrer a meio, a alteração fica registada por enviar
+    cur = conn.execute(
+        "INSERT INTO alerts(ticker, ts, old_rating, new_rating, kind, message, sent, run_id) VALUES (?,?,?,?,?,?,0,?)",
+        (change.ticker, db.now(), int(change.old), int(change.new), change.kind, msg, s.run_id),
     )
     conn.commit()
-    return {"changed": True, "kind": change.kind, "old": change.old.label,
-            "new": change.new.label, "sent": sent, "diff": diff}
+    out = {"changed": True, "kind": change.kind, "old": change.old.label, "new": change.new.label, "diff": diff,
+           "message": msg, "alert_id": cur.lastrowid}
+    if not notify:  # o bot já vai mostrar o cartão desta análise: junta o aviso da alteração em vez de enviar outro
+        return {**out, "sent": False, "deferred": True}
+    n = notifier or default_notifier()
+    try:
+        sent = bool(_send_card(conn, n, s, msg) or n.send(msg, html=True))
+    except Exception as e:  # falha de rede não pode perder o registo da alteração
+        sent = False
+        conn.execute("UPDATE alerts SET message=? WHERE id=?", (f"{msg}\n[ERRO ao notificar: {e}]", cur.lastrowid))
+    conn.execute("UPDATE alerts SET sent=? WHERE id=?", (int(sent), cur.lastrowid))
+    conn.commit()
+    return {**out, "sent": sent}

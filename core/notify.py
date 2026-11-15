@@ -42,10 +42,10 @@ class TelegramNotifier:
         self.api = TelegramAPI(token, chat_id)
 
     def send(self, text: str, html: bool = False) -> bool:
-        return self.api.send_message(text, html)
+        return bool(self.api.send_message(text, html))
 
     def send_photo(self, png: bytes, caption: str, html: bool = False, buttons: dict | None = None) -> bool:
-        return self.api.send_photo(png, caption, html, buttons)
+        return bool(self.api.send_photo(png, caption, html, buttons))
 
 
 def default_notifier() -> Notifier:

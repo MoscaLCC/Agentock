@@ -97,9 +97,10 @@ class BotCommandTests(unittest.TestCase):
         self.assertEqual(bot.symbol_from_command("AAPL"), "AAPL")
 
     def test_profile_error_lists_tappable_options(self):
-        txt = bot.profile_error_text("ABC", "ValueError: 'ABC' é ambíguo — escolhe uma: Alpha Co → ABC.F; Beta KK → ABC.T")
-        self.assertIn("/run_ABC_F", txt)
-        self.assertIn("/run_ABC_T", txt)
+        txt, options = bot.profile_error_text("ABC", "ValueError: 'ABC' é ambíguo — escolhe uma: Alpha Co → ABC.F; Beta KK → ABC.T")
+        self.assertEqual(options, ["ABC.F", "ABC.T"])          # o bot transforma-as em botões "Analisar ABC.F"
+        self.assertIn("Alpha Co", txt)
+        self.assertNotIn("ValueError", txt)
 
 
 if __name__ == "__main__":

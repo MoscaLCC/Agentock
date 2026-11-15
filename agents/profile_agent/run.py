@@ -14,7 +14,7 @@ from pathlib import Path
 
 from core.data import DataUnavailable, get_router
 from core.data.markets import calendar_code, market_of, suffix
-from core.util import BENCHMARK, days_between
+from core.util import BENCHMARK, days_between, major_currency
 
 _spec = importlib.util.spec_from_file_location("_profile_schema", Path(__file__).with_name("schema.py"))
 _schema = importlib.util.module_from_spec(_spec)
@@ -140,11 +140,26 @@ class Resolver:
         return found
 
 
+LISTING_WORDS = {"gdr", "adr", "ads", "adrs", "sponsored", "unsponsored", "depositary", "receipt", "receipts", "shares",
+                 "share", "class", "a", "b", "c", "h", "pref", "preferred", "ordinary", "registered", "reg", "s", "144a"}
+
+
+def same_company(a: str | None, b: str | None) -> bool:
+    """Mesma empresa pelo nome sem a forma jurídica. A pesquisa do Yahoo por "Samsung Electronics" devolvia a
+    Nu Holdings (NU) e a da Coupang devolvia a AMD: entravam como "a própria empresa noutra bolsa"."""
+    ka, kb = company_key(a).split(), company_key(b).split()
+    if not ka or not kb:
+        return False
+    short, long_ = sorted((ka, kb), key=len)
+    # o nome mais longo só pode acrescentar o tipo de título ("… GDR", "… ADR", "… Class A"), não outra empresa
+    return long_[:len(short)] == short and set(long_[len(short):]) <= LISTING_WORDS
+
+
 def _usd(r, amount, currency):
+    """amount na moeda PRINCIPAL (libras, não pence)."""
     if amount is None or not currency:
         return None
-    if currency in ("GBp", "GBX"):  # Londres cota em pence
-        amount, currency = amount / 100, "GBP"
+    currency, _ = major_currency(currency)
     if currency.upper() == "USD":
         return amount
     try:
@@ -182,7 +197,7 @@ def run(ticker: str):
     cross = []
     for h in res.search(prof["name"]):
         sym = h["symbol"]
-        if sym == symbol or is_secondary(sym, h.get("exchange")):
+        if sym == symbol or is_secondary(sym, h.get("exchange")) or not same_company(h.get("name"), prof["name"]):
             continue
         m = market_of(sym)
         if m in ("OTHER", "INDEX", "FUT", "FX"):
@@ -197,12 +212,14 @@ def run(ticker: str):
             pass
 
     currency = quote.get("currency") or prof.get("currency")
+    _, minor_div = major_currency(currency)
+    market_cap = prof["market_cap"] / minor_div if prof.get("market_cap") else prof.get("market_cap")
     return Profile(
         query=ticker, symbol=symbol, name=prof["name"], market=market, exchange=prof.get("exchange"),
         calendar=calendar_code(symbol), currency=currency, sector=prof.get("sector"), industry=prof.get("industry"),
         country=prof.get("country"), summary=prof.get("summary"), price=quote.get("price"),
-        change_pct=quote.get("change_pct"), quote_ts=quote.get("ts"), market_cap=prof.get("market_cap"),
-        market_cap_usd=_usd(r, prof.get("market_cap"), currency), first_trade_date=first, days_listed=days_listed,
+        change_pct=quote.get("change_pct"), quote_ts=quote.get("ts"), market_cap=market_cap,
+        market_cap_usd=_usd(r, market_cap, currency), first_trade_date=first, days_listed=days_listed,
         ipo_recente=bool(days_listed is not None and days_listed < 365), history_days=len(bars),
         shares_outstanding=prof.get("shares_outstanding"), float_shares=prof.get("float_shares"),
         benchmark=BENCHMARK.get(market), cross_listings=cross[:8], peers_hint=peers, sources=sources,

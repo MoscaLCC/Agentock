@@ -1,10 +1,5 @@
 name: sentiment_agent
-description: 2.10 — sentimento agregado (notícias 4h/24h/7d/30d, analistas, insiders do insiders_agent) e a sua tendência.
-model: claude-sonnet-5-5
-max_turns: 8
-max_budget_usd: 0.5
+kind: script
+description: 2.10 — sentimento agregado por código (notícias com tom × relevância, consenso dos analistas, insiders) e a sua tendência. A rubrica é aritmética (core/sentiment.py); o LLM dava o mesmo resultado.
 inputs: [profile]
-defaults: {news_4h: null, news_24h: null, news_7d: null, news_30d: null, analysts: null, insiders: null}
-tools: [Skill]
-output: schema.py:SentimentView
-cache_ttl: 0
+defaults: {news: null, analysts: null, insiders: null}

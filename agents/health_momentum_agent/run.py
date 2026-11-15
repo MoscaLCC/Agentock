@@ -1,6 +1,6 @@
 """2.7 — saúde, força e momentum. Cálculos próprios (todos os mercados); nos EUA compara com os scores do FMP."""
 from core.data import DataUnavailable, get_router
-from core.util import as_dict, r2
+from core.util import as_dict, major_currency, r2
 
 
 def _g(block, key, i):
@@ -22,6 +22,13 @@ def piotroski(fin: dict) -> dict:
     cr0 = _div(_g(bal, "current_assets", 0), _g(bal, "current_liabilities", 0))
     cr1 = _div(_g(bal, "current_assets", 1), _g(bal, "current_liabilities", 1))
     sh0, sh1 = _g(bal, "shares", 0), _g(bal, "shares", 1)
+    # "Sem diluição" (Piotroski): não emitiu ações. A contagem do Yahoo tem ruído (Samsung: preferenciais num ano
+    # sim, noutro não), por isso primeiro o caixa: emissões líquidas de recompras; só depois o n.º de ações.
+    issued, bought = _g(cf, "stock_issuance", 0), _g(cf, "buybacks", 0)
+    if issued is not None or bought is not None:
+        no_dilution = (issued or 0) - abs(bought or 0) <= 0
+    else:
+        no_dilution = None if None in (sh0, sh1) else sh0 <= sh1
     gm0 = _div(_g(inc, "gross_profit", 0), _g(inc, "revenue", 0))
     gm1 = _div(_g(inc, "gross_profit", 1), _g(inc, "revenue", 1))
     at0, at1 = _div(_g(inc, "revenue", 0), ta0), _div(_g(inc, "revenue", 1), ta1)
@@ -32,7 +39,7 @@ def piotroski(fin: dict) -> dict:
         "cfo_maior_que_lucro": None if None in (cfo0, ni0) else cfo0 > ni0,
         "alavancagem_a_descer": None if None in (lev0, lev1) else lev0 <= lev1,
         "liquidez_a_subir": None if None in (cr0, cr1) else cr0 > cr1,
-        "sem_diluicao": None if None in (sh0, sh1) else sh0 <= sh1,
+        "sem_diluicao": no_dilution,
         "margem_bruta_a_subir": None if None in (gm0, gm1) else gm0 > gm1,
         "rotacao_ativos_a_subir": None if None in (at0, at1) else at0 > at1,
     }
@@ -69,8 +76,13 @@ def _band(x, cuts, scores, default=None):
 
 def scores(fin: dict, pio: dict, alt: dict, mom: dict) -> dict:
     r = fin.get("ratios") or {}
-    de = r.get("debt_to_equity")
-    de = de / 100 if de and de > 10 else de  # o yfinance devolve em %
+    bal = fin.get("balance") or {}
+    debt, equity = _g(bal, "total_debt", 0), _g(bal, "equity", 0)
+    if debt is not None and equity and equity > 0:
+        de = debt / equity                         # do balanço, na mesma data
+    else:
+        de = r.get("debt_to_equity")
+        de = de / 100 if de is not None else None  # o Yahoo dá SEMPRE em % (2,8 = 2,8%, não 2,8×)
     lev = None if de is None else 100 if de < 0.5 else 70 if de < 1 else 40 if de < 2 else 15
     zone = {"segura": 100, "cinzenta": 60, "risco": 20}.get(alt.get("zone"))
     pio_s = pio["score_9"] / 9 * 100 if pio.get("score_9") is not None else None
@@ -124,10 +136,12 @@ def run(profile):
             bench = r.get("eod", p["benchmark"], days=400).data
         except DataUnavailable:
             pass
-    mcap = p.get("market_cap")
-    if fin.get("currency") and p.get("currency") and fin["currency"] != p["currency"] and mcap:
+    mcap = p.get("market_cap")  # já na moeda principal da cotação (ver profile_agent)
+    quote_cur, _ = major_currency(p.get("currency"))
+    fin_cur, _ = major_currency(fin.get("currency"))
+    if fin_cur and quote_cur and fin_cur != quote_cur and mcap:
         try:  # market cap na moeda de reporte (ex.: ADR em USD, contas em CNY)
-            mcap = mcap * r.get("fx", f"{p['currency'].upper()}/{fin['currency'].upper()}").data["rate"]
+            mcap = mcap * r.get("fx", f"{quote_cur}/{fin_cur}").data["rate"]
         except DataUnavailable:
             mcap = None
     pio, alt, mom = piotroski(fin), altman(fin, mcap, p.get("sector")), momentum(bars, bench)

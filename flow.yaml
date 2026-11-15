@@ -1,96 +1,89 @@
 # Fluxos de agentes (core/orchestrator.py).
-# Inputs: $param (do trigger: ticker, hours, ...) · $nó (output de outro nó) · $nó.campo · $run_id
+# Inputs: $param (do trigger: ticker, ...) · $nó (output de outro nó) · $nó.campo · $run_id
 # As dependências deduzem-se das referências; `after: [nó]` força ordem sem passar dados.
-# `agent: $param` escolhe o agente por parâmetro (ex.: classificação v1/v2).
-
-dossier: &dossier
-  profile: $profile
-  indicators: $indicators
-  technical: $technical
-  calendar: $calendar
-  analysts: $analysts
-  price_targets: $price_targets
-  health: $health
-  fundamental: $fundamental
-  fundamental_data: $fundamental_data
-  comps: $comps
-  market_share: $market_share
-  relations: $relations
-  ipo_lifecycle: $ipo_lifecycle
-  asia_lead: $asia_lead
-  europe_lead: $europe_lead
-  us_lead: $us_lead
-  news_4h: $news_4h
-  news_24h: $news_24h
-  news_7d: $news_7d
-  news_30d: $news_30d
-  insiders: $insiders
-  sentiment: $sentiment
-  timing: $timing
-  forecast: $forecast
+# `agent: $param` escolhe o agente por parâmetro (ex.: classificação v1/v2). `when: $param` liga/desliga o nó.
+# Cada nó arranca quando as SUAS dependências terminam. `timeout` (s) é o teto de execução de cada nó: ~3× o
+# máximo observado (docs/BASELINE.md §3). Um nó que o excede falha e vira lacuna declarada; a análise continua.
 
 flows:
   ticker:
-    defaults: {hours: 4, rating_agent: rating_agent, rating_version: v2}
+    # alert_notify: false quando o pedido vem do bot (ele próprio mostra a alteração no veredicto, sem 2.º cartão)
+    defaults: {rating_agent: rating_agent, rating_version: v2, debate: true, alert_notify: true}
     nodes:
       # 0 — contexto
-      profile:          {agent: profile_agent, inputs: {ticker: $ticker}, timeout: 240}
-      # 1 — dados (scripts, paralelo)
-      indicators:       {agent: technical_indicators_agent, inputs: {profile: $profile}, timeout: 240}
-      ipo_lifecycle:    {agent: ipo_lifecycle_agent, inputs: {profile: $profile}, timeout: 300}
-      calendar:         {agent: calendar_agent, inputs: {profile: $profile, lifecycle: $ipo_lifecycle}, timeout: 120}
-      analysts:         {agent: analysts_agent, inputs: {profile: $profile}, timeout: 120}
-      price_targets:    {agent: price_targets_agent, inputs: {profile: $profile}, timeout: 120}
-      health:           {agent: health_momentum_agent, inputs: {profile: $profile}, timeout: 240}
-      asia_lead:        {agent: asia_lead_agent, inputs: {profile: $profile}, timeout: 240}
-      europe_lead:      {agent: europe_lead_agent, inputs: {profile: $profile}, timeout: 240}
-      us_lead:          {agent: us_lead_agent, inputs: {profile: $profile}, timeout: 240}
-      insiders:         {agent: insiders_agent, inputs: {profile: $profile}, timeout: 600}  # DART: 1.ª vez lenta
-      # 1b — notícias (LLM, multilíngue)
-      news_4h:          {agent: news_4_hours_agent, inputs: {ticker: $profile.symbol, hours: $hours}}
-      news_24h:         {agent: news_24_hours_agent, inputs: {ticker: $profile.symbol}}
-      news_7d:          {agent: news_7_days_agent, inputs: {ticker: $profile.symbol}}
-      news_30d:         {agent: news_30_days_agent, inputs: {ticker: $profile.symbol}, timeout: 1200}
+      profile:          {agent: profile_agent, inputs: {ticker: $ticker}, timeout: 60}
+      # 1 — dados (scripts, em paralelo)
+      indicators:       {agent: technical_indicators_agent, inputs: {profile: $profile}, timeout: 60}
+      ipo_lifecycle:    {agent: ipo_lifecycle_agent, inputs: {profile: $profile}, timeout: 90}
+      calendar:         {agent: calendar_agent, inputs: {profile: $profile, lifecycle: $ipo_lifecycle}, timeout: 45}
+      analysts:         {agent: analysts_agent, inputs: {profile: $profile}, timeout: 45}
+      price_targets:    {agent: price_targets_agent, inputs: {profile: $profile}, timeout: 45}
+      health:           {agent: health_momentum_agent, inputs: {profile: $profile}, timeout: 60}
+      asia_lead:        {agent: asia_lead_agent, inputs: {profile: $profile}, timeout: 60}
+      europe_lead:      {agent: europe_lead_agent, inputs: {profile: $profile}, timeout: 60}
+      us_lead:          {agent: us_lead_agent, inputs: {profile: $profile}, timeout: 60}
+      insiders:         {agent: insiders_agent, inputs: {profile: $profile}, timeout: 300}  # DART: 1.ª vez lenta
+      # 1b — notícias: recolha (código) → triagem (1 sessão LLM) → janelas (código)
+      news_feed:        {agent: news_feed_agent, inputs: {profile: $profile}, timeout: 45}
+      news_scan:        {agent: news_scan_agent, inputs: {profile: $profile, feed: $news_feed}, timeout: 180}
+      news:             {agent: news_agent, inputs: {profile: $profile, feed: $news_feed, scan: $news_scan}, timeout: 20}
       # 2 — análise
-      technical:        {agent: technical_agent, inputs: {profile: $profile, indicators: $indicators}}
-      competitors:      {agent: competitors_agent, inputs: {profile: $profile}}
-      comps:            {agent: comps_agent, inputs: {profile: $profile, competitors: $competitors}, timeout: 600}
-      fundamental_data: {agent: fundamental_data_agent, inputs: {profile: $profile, comps: $comps}, timeout: 240}
-      fundamental:      {agent: fundamental_agent, inputs: {profile: $profile, data: $fundamental_data, health: $health}}
-      market_share:     {agent: market_share_agent, inputs: {profile: $profile, competitors: $competitors}}
-      relations:        {agent: relations_agent, inputs: {profile: $profile}}
-      sentiment:
-        agent: sentiment_agent
-        inputs: {profile: $profile, news_4h: $news_4h, news_24h: $news_24h, news_7d: $news_7d,
-                 news_30d: $news_30d, analysts: $analysts, insiders: $insiders}
+      technical:        {agent: technical_agent, inputs: {profile: $profile, indicators: $indicators}, timeout: 90}
+      competitors:      {agent: competitors_agent, inputs: {profile: $profile}, timeout: 120}
+      comps:            {agent: comps_agent, inputs: {profile: $profile, competitors: $competitors}, timeout: 90}
+      fundamental_data: {agent: fundamental_data_agent, inputs: {profile: $profile, comps: $comps}, timeout: 60}
+      fundamental:      {agent: fundamental_agent, inputs: {profile: $profile, data: $fundamental_data, health: $health}, timeout: 90}
+      market_share:     {agent: market_share_agent, inputs: {profile: $profile, competitors: $competitors}, timeout: 150}
+      relations:        {agent: relations_agent, inputs: {profile: $profile}, timeout: 150}
+      sentiment:        {agent: sentiment_agent, inputs: {profile: $profile, news: $news, analysts: $analysts, insiders: $insiders}, timeout: 20}
       # 3 — síntese
       timing:
         agent: timing_agent
+        timeout: 90
         inputs: {profile: $profile, indicators: $indicators, technical: $technical, calendar: $calendar,
                  sentiment: $sentiment, asia_lead: $asia_lead, europe_lead: $europe_lead, us_lead: $us_lead,
                  ipo_lifecycle: $ipo_lifecycle}
       forecast_stats:
         agent: forecast_stats_agent
+        timeout: 30
         inputs: {profile: $profile, price_targets: $price_targets, fundamental_data: $fundamental_data}
       forecast:
         agent: forecast_agent
+        timeout: 120
         inputs: {profile: $profile, stats: $forecast_stats, fundamental: $fundamental, sentiment: $sentiment,
                  technical: $technical, analysts: $analysts}
-      rating:           {agent: $rating_agent, inputs: {ticker: $profile.symbol, dossier: *dossier}, timeout: 1500}
+      # 4 — classificação: dossier compacto (código) → bull e bear em paralelo → juiz → guard
+      dossier:
+        agent: dossier_agent
+        timeout: 20
+        inputs: {profile: $profile, indicators: $indicators, technical: $technical, calendar: $calendar,
+                 analysts: $analysts, price_targets: $price_targets, health: $health, fundamental: $fundamental,
+                 fundamental_data: $fundamental_data, comps: $comps, market_share: $market_share,
+                 relations: $relations, ipo_lifecycle: $ipo_lifecycle, asia_lead: $asia_lead,
+                 europe_lead: $europe_lead, us_lead: $us_lead, news: $news, insiders: $insiders,
+                 sentiment: $sentiment, timing: $timing, forecast: $forecast}
+      bull:             {agent: debate_bull_agent, when: $debate, inputs: {ticker: $profile.symbol, dossier: $dossier}, timeout: 120}
+      bear:             {agent: debate_bear_agent, when: $debate, inputs: {ticker: $profile.symbol, dossier: $dossier}, timeout: 120}
+      rating:
+        agent: $rating_agent
+        timeout: 180
+        inputs: {ticker: $profile.symbol, dossier: $dossier, bull: $bull, bear: $bear}
       guard:
         agent: guard_agent
-        inputs: {decision: $rating, dossier: *dossier, profile: $profile, version: $rating_version, run_id: $run_id}
-      # 4 — estado
-      memory:           {agent: memory_agent, inputs: {synthesis: $guard}}
-      alert:            {agent: change_alert_agent, inputs: {synthesis: $guard}, after: [memory]}
+        timeout: 30
+        inputs: {decision: $rating, dossier: $dossier, profile: $profile, version: $rating_version, run_id: $run_id,
+                 bull: $bull, bear: $bear}
+      # 5 — estado
+      memory:           {agent: memory_agent, inputs: {synthesis: $guard}, timeout: 30}
+      alert:            {agent: change_alert_agent, inputs: {synthesis: $guard, notify: $alert_notify}, after: [memory], timeout: 60}
 
   ipos:
     defaults: {days: 30, min_value_usd: 500000000}
     nodes:
-      web:      {agent: ipo_web_agent, inputs: {days: $days, min_value_usd: $min_value_usd}, timeout: 1200}
-      calendar: {agent: ipo_calendar_agent, inputs: {days: $days, min_value_usd: $min_value_usd, web: $web}}
+      web:      {agent: ipo_web_agent, inputs: {days: $days, min_value_usd: $min_value_usd}, timeout: 600}
+      calendar: {agent: ipo_calendar_agent, inputs: {days: $days, min_value_usd: $min_value_usd, web: $web}, timeout: 120}
 
   ipo:
     nodes:
-      pre_ipo:    {agent: pre_ipo_agent, inputs: {ipo: $ipo}, timeout: 2400}
-      ipo_memory: {agent: ipo_memory_agent, inputs: {synthesis: $pre_ipo, ipo: $ipo, run_id: $run_id}}
+      pre_ipo:    {agent: pre_ipo_agent, inputs: {ipo: $ipo}, timeout: 1200}
+      ipo_memory: {agent: ipo_memory_agent, inputs: {synthesis: $pre_ipo, ipo: $ipo, run_id: $run_id}, timeout: 60}
