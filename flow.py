@@ -6,6 +6,7 @@
   python flow.py AAPL --only indicators   # só um nó
   python flow.py AAPL --dry-run           # mostra o DAG sem correr
   python flow.py AAPL --no-cache          # ignora a cache de outputs
+  python flow.py AAPL --run-id RUN_ID     # retoma uma análise interrompida (os nós já feitos não se repetem)
   python flow.py AAPL --verbose           # mostra o output de todos os nós
   python flow.py --universe --top 20      # as N maiores (ver também --parallel, --resume, --yes)
   python flow.py --ipos [--days 30]       # calendário de IPOs + análise de cada IPO acima do limiar
@@ -63,7 +64,8 @@ def parse_sets(items: list[str]) -> dict:
 
 
 async def run_ticker(ticker: str, a, params: dict):
-    report = await run_flow(a.flow, {"ticker": ticker, **params}, only=a.only, use_cache=not a.no_cache)
+    report = await run_flow(a.flow, {"ticker": ticker, **params}, only=a.only, use_cache=not a.no_cache,
+                            run_id=a.run_id, resume=bool(a.run_id))
     print_report(ticker, report, a.verbose)
     return report
 
@@ -113,6 +115,7 @@ def cli(argv=None):
     p.add_argument("--rating", choices=["v1", "v2"])
     p.add_argument("--set", action="append", metavar="K=V")
     p.add_argument("--only")
+    p.add_argument("--run-id", help="retoma a análise com este run_id")
     p.add_argument("--no-cache", action="store_true")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--verbose", action="store_true")

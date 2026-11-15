@@ -10,6 +10,8 @@ from pathlib import Path
 from core import db
 from core.orchestrator import run_flow
 
+NL = chr(10)
+
 
 def write(base: Path, rel: str, text: str) -> None:
     p = base / rel
@@ -85,6 +87,28 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual({r.status for r in rep.results.values()}, {"cancelled"})
         rows = self.conn.execute("SELECT node, status FROM agent_outputs WHERE run_id=?", (rep.run_id,)).fetchall()
         self.assertEqual(sorted(tuple(r) for r in rows), [("a", "cancelled"), ("b", "cancelled")])
+
+    def test_resume_reuses_done_nodes_and_redoes_what_depended_on_a_failure(self):
+        """Retoma: `a` ficou feito; `b` falhou; `c` (que juntava os dois) ficou gravado sem o `b` — tem de ser refeito."""
+        write(self.dir, "flaky/agent.yaml", "name: flaky" + NL + "kind: script" + NL + "defaults: {fail: false}" + NL)
+        write(self.dir, "flaky/run.py", NL.join(["def run(fail=False):", "    if fail:",
+                                                 "        raise ValueError('limite')", "    return {'v': 2}", ""]))
+        write(self.dir, "join/agent.yaml", "name: join" + NL + "kind: script" + NL + "defaults: {a: null, b: null}" + NL)
+        write(self.dir, "join/run.py", NL.join(["def run(a=None, b=None):",
+                                                "    return {'a': a is not None, 'b': b is not None}", ""]))
+        spec = {"defaults": {"fail": True},
+                "nodes": {"a": {"agent": "wait", "inputs": {"tag": "feito"}},
+                          "b": {"agent": "flaky", "inputs": {"fail": "$fail"}},
+                          "c": {"agent": "join", "inputs": {"a": "$a", "b": "$b"}},
+                          "d": {"agent": "wait", "inputs": {"dep": "$a", "tag": "só de a"}}}}
+        first = self.flow(spec)
+        self.assertEqual(first.results["c"].output, {"a": True, "b": False})
+        events = []
+        again = self.flow(spec, {"fail": False}, run_id=first.run_id, resume=True, on_event=events.append)
+        started = sorted(e["node"] for e in events if e["type"] == "start")
+        self.assertEqual(started, ["b", "c"])                       # `a` e `d` reaproveitados; `b` e `c` refeitos
+        self.assertTrue(again.results["a"].cached and again.results["d"].cached)
+        self.assertEqual(again.results["c"].output, {"a": True, "b": True})
 
     def test_conditional_node_is_off_without_being_a_failure(self):
         spec = {"defaults": {"debate": True},

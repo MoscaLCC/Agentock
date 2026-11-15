@@ -160,6 +160,7 @@ async def run_flow(flow: str | dict, params: dict, *, only: str | None = None, u
     previous = recorded_results(conn, run_id) if resume else {}
     results: dict[str, AgentResult] = {}
     tasks: dict[str, asyncio.Task] = {}
+    reused: set[str] = set()
     t0 = time.time()
 
     def emit(kind: str, name: str, **extra) -> None:
@@ -187,7 +188,10 @@ async def run_flow(flow: str | dict, params: dict, *, only: str | None = None, u
                 await asyncio.wait(ds)
             if cancel is not None and cancel.is_set():
                 raise asyncio.CancelledError
-            if name in previous:  # retoma: já estava feito nesta execução
+            # retoma: só se reaproveita um nó cujas dependências também foram todas reaproveitadas — se um nó a
+            # montante falhou da 1.ª vez e corre agora, o que dependia dele (ex.: o dossier) tem de ser refeito
+            if name in previous and all(d in reused for d in deps(node, nodes)):
+                reused.add(name)
                 return finish(name, previous[name])
             agent = resolve(node.agent, params, results)  # permite `agent: $rating_agent`
             if not resolve(node.when, params, results):
