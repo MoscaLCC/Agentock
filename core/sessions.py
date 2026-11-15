@@ -4,6 +4,7 @@ Ideia: a ação fechou na sua bolsa às T. Que informação nova chegou depois d
 negociou entretanto? Proxies por ordem de força: a própria empresa noutra bolsa (1.0), futuros (0.7),
 índices (0.5). Peers por região ficam fora por agora (exigiria o 2.12 antes da camada 1).
 """
+import threading
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -16,20 +17,35 @@ GROUPS = {
 WEIGHTS = {"cross_listing": 1.0, "future": 0.7, "index": 0.5}
 
 
+# O exchange_calendars não é thread-safe ao construir um calendário (regras de feriados em Series partilhadas).
+# Os três *_lead correm em threads paralelas: sem este lock, dois falhavam com "Length of values (70) does not
+# match length of index (53)". Um calendário construído fica em cache para o processo.
+_CAL_LOCK = threading.Lock()
+_CALENDARS: dict = {}
+
+
+def get_calendar(calendar_code: str):
+    with _CAL_LOCK:
+        if calendar_code not in _CALENDARS:
+            import exchange_calendars as xcals
+            _CALENDARS[calendar_code] = xcals.get_calendar(calendar_code)
+        return _CALENDARS[calendar_code]
+
+
 def market_state(calendar_code: str | None, now: datetime) -> dict:
     """Estado da bolsa da ação: aberta agora? último fecho (UTC)?"""
     if not calendar_code:
         return {"known": False}
-    import exchange_calendars as xcals
-    cal = xcals.get_calendar(calendar_code)
+    cal = get_calendar(calendar_code)
     ts = pd.Timestamp(now).tz_convert("UTC") if pd.Timestamp(now).tzinfo else pd.Timestamp(now, tz="UTC")
     ts = ts.floor("min")
-    try:
-        is_open = bool(cal.is_open_on_minute(ts))
-    except Exception:
-        is_open = False
-    last_close = cal.previous_close(ts) if not is_open else cal.previous_close(ts)
-    next_open = cal.next_open(ts)
+    with _CAL_LOCK:  # as consultas preenchem caches internas do calendário na 1.ª utilização
+        try:
+            is_open = bool(cal.is_open_on_minute(ts))
+        except Exception:
+            is_open = False
+        last_close = cal.previous_close(ts)
+        next_open = cal.next_open(ts)
     return {"known": True, "open": is_open, "last_close": last_close.isoformat(), "next_open": next_open.isoformat()}
 
 
