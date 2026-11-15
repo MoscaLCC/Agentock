@@ -64,12 +64,45 @@ class AgentSpec:
         return self.path
 
     @property
-    def allowed_tools(self) -> list[str]:
-        tools = list(self.tools) + [f"Bash({p})" for p in self.bash]
-        tools += [f"mcp__market__{t}" for t in self.market_tools]
+    def builtin_tools(self) -> list[str]:
+        """Tools internas que ficam DISPONÍVEIS na sessão (D24): só as declaradas. Sem isto, as 16 tools do
+        Claude Code (~10 mil tokens de definições) vão em todos os pedidos. `Skill` não entra: as skills do agente
+        são coladas no system prompt (ver `skills_text`)."""
+        tools = [t for t in self.tools if t != "Skill"]
+        if self.bash and "Bash" not in tools:
+            tools.append("Bash")
         if self.subagents and "Agent" not in tools:
             tools.append("Agent")
         return tools
+
+    @property
+    def allowed_tools(self) -> list[str]:
+        tools = [t for t in self.builtin_tools if t != "Bash"] + [f"Bash({p})" for p in self.bash]
+        return tools + [f"mcp__market__{t}" for t in self.market_tools]
+
+    @property
+    def skills_text(self) -> str:
+        """Skills do agente (filho → antepassados), sem front matter, com as suas referências.
+        Vão no system prompt: poupa um pedido inteiro à API por agente e a lista de skills globais."""
+        out, seen = [], set()
+        for d in self.dirs:
+            for skill in sorted((d / ".claude" / "skills").glob("*/SKILL.md")):
+                name = skill.parent.name
+                if name in seen:
+                    continue
+                seen.add(name)
+                body = skill.read_text(encoding="utf-8")
+                if body.startswith("---"):
+                    body = body.split("---", 2)[-1]
+                out.append(f"---\nGuia `{name}`:\n\n{body.strip()}")
+                for ref in sorted((skill.parent / "references").glob("*.md")):
+                    out.append(f"### references/{ref.name}\n\n{ref.read_text(encoding='utf-8').strip()}")
+        return "\n\n".join(out)
+
+    def system_prompt(self, vars_: dict) -> str:
+        """Prompt do agente com as variáveis substituídas + guias (estes não são template: podem ter '$')."""
+        text = self.prompt_tpl.safe_substitute(vars_)
+        return f"{text.rstrip()}\n\n{self.skills_text}" if self.skills_text else text
 
     def find(self, rel: str) -> Path | None:
         for d in self.dirs:

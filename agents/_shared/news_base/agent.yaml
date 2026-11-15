@@ -10,7 +10,7 @@ defaults:
   focus: "notícias de última hora"
   max_items: 10
 
-tools: [WebSearch, WebFetch, Read, Skill]
+tools: [WebSearch, WebFetch, Read]
 bash: ["python scripts/*"]
 market_tools: [news, profile]
 hooks: [block_domains]

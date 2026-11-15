@@ -4,7 +4,7 @@ model: claude-opus-5-5
 max_turns: 40
 max_budget_usd: 5.0
 inputs: [ipo]
-tools: [WebSearch, WebFetch, Read, Skill, Agent]
+tools: [WebSearch, WebFetch, Read, Agent]
 bash: ["python scripts/*"]
 market_tools: [sec_search, search, profile, quote, financials, eod]
 hooks: [block_domains]

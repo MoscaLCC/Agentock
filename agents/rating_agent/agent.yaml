@@ -3,7 +3,7 @@ extends: _shared/rating_base
 description: 2.19 v2 — debate. Subagentes bull e bear defendem cada lado a partir do dossier; este agente julga.
 max_turns: 14
 max_budget_usd: 4.0
-tools: [Skill, Agent, Read]
+tools: [Agent, Read]
 file_inputs: [dossier]          # os subagentes leem o dossier do ficheiro ($dossier_file)
 subagents:
   bull:

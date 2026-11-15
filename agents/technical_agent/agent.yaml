@@ -4,7 +4,7 @@ model: claude-haiku-5-5
 max_turns: 6
 max_budget_usd: 0.2
 inputs: [profile, indicators]
-tools: [Skill]
+tools: []
 output: schema.py:TechnicalView
 cache_ttl: 3600
 cache_key: [profile.symbol, indicators.last_date]

@@ -35,6 +35,7 @@ class AgentResult:
     cost_usd: float | None = None
     duration_ms: int | None = None
     turns: int | None = None
+    usage: dict | None = None  # tokens por modelo: {modelo: {input, cache_write, cache_read, output, cost}}
 
 
 _SLOTS: dict = {}
@@ -94,11 +95,21 @@ def _restore(spec: AgentSpec, raw: str):
     return spec.output_model.model_validate(data) if spec.output_model else data
 
 
+def normalize_usage(model_usage: dict | None) -> dict | None:
+    """`ResultMessage.model_usage` do SDK (camelCase, por modelo, inclui subagentes) → formato gravado."""
+    if not model_usage:
+        return None
+    return {m: {"input": u.get("inputTokens", 0), "cache_write": u.get("cacheCreationInputTokens", 0),
+                "cache_read": u.get("cacheReadInputTokens", 0), "output": u.get("outputTokens", 0),
+                "cost": u.get("costUSD", 0.0)} for m, u in model_usage.items()}
+
+
 def persist(conn, run_id: str, node: str | None, ticker: str | None, res: AgentResult) -> None:
     db.save_agent_output(conn, run_id=run_id, node=node or res.agent, agent=res.agent, ticker=ticker,
                          status=res.status, cached=res.cached,
                          output=dumps(res.output) if res.output is not None else None, error=res.error,
-                         cost_usd=res.cost_usd, duration_ms=res.duration_ms, turns=res.turns)
+                         cost_usd=res.cost_usd, duration_ms=res.duration_ms, turns=res.turns,
+                         usage=json.dumps(res.usage) if res.usage else None)
 
 
 # ---------------------------------------------------------------- script
@@ -136,11 +147,15 @@ def _options(spec: AgentSpec, vars_: dict, ctx: dict, add_dirs: list[str] | None
     if spec.market_tools:
         from .market_tools import build_market_server
         mcp["market"] = build_market_server(spec.market_tools)
+    # Sessão isolada (D24): no contexto só entra o que é do agente. Sem isto cada sessão herdava as 16 tools do
+    # Claude Code, a lista de skills globais e os conectores MCP da conta (~45 mil tokens por agente, e conectores
+    # pessoais visíveis a agentes que leem a web).
     kwargs = dict(
-        system_prompt=spec.prompt_tpl.safe_substitute(vars_),
-        allowed_tools=spec.allowed_tools, mcp_servers=mcp, cwd=str(spec.asset_dir),
-        setting_sources=["project"], max_turns=spec.max_turns, model=spec.model,
-        hooks=build_hooks(spec.hooks, ctx),
+        system_prompt=spec.system_prompt(vars_),
+        tools=spec.builtin_tools, allowed_tools=spec.allowed_tools, skills=[],
+        mcp_servers=mcp, strict_mcp_config=True, cwd=str(spec.asset_dir),
+        setting_sources=[], env={"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"},
+        max_turns=spec.max_turns, model=spec.model, hooks=build_hooks(spec.hooks, ctx),
     )
     if spec.output_model:
         kwargs["output_format"] = {"type": "json_schema", "schema": spec.output_model.model_json_schema()}
@@ -170,7 +185,8 @@ async def _run_llm(spec: AgentSpec, inputs: dict, ctx: dict):
             result = msg
     if result is None:
         raise AgentError("o agente terminou sem ResultMessage", {})
-    meta = {"cost_usd": result.total_cost_usd, "duration_ms": result.duration_ms, "turns": result.num_turns}
+    meta = {"cost_usd": result.total_cost_usd, "duration_ms": result.duration_ms, "turns": result.num_turns,
+            "usage": normalize_usage(result.model_usage)}
     if result.is_error:
         raise AgentError(f"{result.subtype}: {result.errors or result.result}", meta)
     data = result.structured_output

@@ -4,7 +4,7 @@ model: claude-sonnet-5-5
 max_turns: 20
 max_budget_usd: 0.8
 inputs: [profile]
-tools: [WebSearch, WebFetch, Skill]
+tools: [WebSearch, WebFetch]
 market_tools: [subsidiaries, filings, search, quote]
 hooks: [block_domains]
 output: schema.py:Relations

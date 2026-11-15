@@ -4,6 +4,6 @@ model: claude-opus-5-5
 max_turns: 8
 max_budget_usd: 2.0
 inputs: [ticker, dossier]
-tools: [Skill]
+tools: []
 output: schema.py:RatingDecision
 cache_ttl: 0

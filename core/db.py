@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS universe_progress (
 MIGRATIONS = {
     "runs": {"version": "TEXT", "market": "TEXT", "currency": "TEXT", "run_id": "TEXT", "bench_symbol": "TEXT",
              "bench_1d": "REAL", "bench_7d": "REAL", "bench_30d": "REAL", "evaluated_at": "TEXT"},
+    "agent_outputs": {"usage": "TEXT"},  # tokens por modelo (JSON), desde a Fase 10
 }
 
 
@@ -120,11 +121,11 @@ def mark_seen(conn, key: str, kind: str, payload=None) -> None:
 
 
 def save_agent_output(conn, *, run_id, node, agent, ticker, status, cached, output, error, cost_usd,
-                      duration_ms, turns) -> None:
+                      duration_ms, turns, usage=None) -> None:
     conn.execute(
         "INSERT INTO agent_outputs(run_id, node, agent, ticker, ts, status, cached, output, error, cost_usd,"
-        " duration_ms, turns) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-        (run_id, node, agent, ticker, now(), status, int(cached), output, error, cost_usd, duration_ms, turns),
+        " duration_ms, turns, usage) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (run_id, node, agent, ticker, now(), status, int(cached), output, error, cost_usd, duration_ms, turns, usage),
     )
     conn.commit()
 

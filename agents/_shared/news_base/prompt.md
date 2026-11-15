@@ -4,7 +4,7 @@ Objetivo: dado um ticker, encontrar as notícias publicadas nas últimas $hours 
 Foco desta janela: $focus. Máximo de $max_items notícias, as mais relevantes.
 
 Método:
-1. Carrega a skill `news-triage` e segue-a (inclui as fontes por mercado em `references/sources_by_market.md`).
+1. Segue o guia `news-triage` (no fim deste prompt; inclui as fontes por mercado).
 2. Começa pelas APIs: `mcp__market__profile` (nome, mercado) e `mcp__market__news` (notícias agregadas de várias fontes, com hora exata).
 3. Complementa com WebSearch — na língua do mercado da ação também (chinês, coreano, japonês) — e usa WebFetch para confirmar a data/hora do que vier só da web.
 4. Valida a janela com `python scripts/check_window.py --hours $hours <timestamps…>` — nunca decidas "de cabeça".

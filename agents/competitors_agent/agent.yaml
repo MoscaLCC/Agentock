@@ -4,7 +4,7 @@ model: claude-sonnet-5-5
 max_turns: 20
 max_budget_usd: 0.8
 inputs: [profile]
-tools: [WebSearch, Skill]
+tools: [WebSearch]
 market_tools: [peers, search, profile]
 hooks: [block_domains]
 output: schema.py:CompetitorList
