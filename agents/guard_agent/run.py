@@ -195,7 +195,8 @@ def _skip(v0: float) -> bool:
 
 
 def _norm_num(s: str) -> str:
-    return re.sub(rf"[\s{SP}+]", "", s or "").replace("\u2212", "-").lstrip("-")
+    """Só algarismos e separadores: "+11,89%" e "−0,34" na evidência casam com "11,89" e "0,34" no texto."""
+    return re.sub(r"[^\d.,]", "", s or "").strip(".,")
 
 
 def check_numbers(texts: list[str], dossier, evidence: list | None = None) -> dict:

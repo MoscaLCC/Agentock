@@ -3,11 +3,11 @@
 O código já fez a recolha nas APIs (várias fontes, sem repetidos, com hora exata e um `id` por item). O teu trabalho é o que exige julgamento:
 
 1. **Triagem da recolha.** Para cada item que traga informação sobre a empresa, devolve uma anotação com o `id` copiado tal e qual. Deixa de fora (não anotes) ruído, listas genéricas de "ações a comprar", conteúdo patrocinado e itens em que a empresa só é mencionada de passagem. A mesma história em várias fontes: anota só a fonte mais primária.
-2. **Complemento pela web**, com poucas pesquisas (no máximo 4) e só onde a recolha é fraca:
-   - na língua do mercado da ação (chinês, coreano, japonês, alemão…), com as fontes locais abaixo;
-   - na janela de 7 a 30 dias, que as APIs cobrem mal: resultados, guidance, M&A, regulação, mudanças de gestão, contratos grandes;
-   - se a recolha estiver vazia ou tiver lacunas declaradas.
-   Entram em `web_items` só notícias que não estão na recolha. Usa WebFetch para confirmar a data de publicação das que tiverem relevância 4 ou 5 (no máximo 3 páginas); nas outras, `time_confirmed: false`.
+2. **Complemento pela web** (WebSearch), entre 1 e 4 pesquisas. As APIs só cobrem cerca de 7 dias e quase só fontes em inglês, por isso:
+   - faz **sempre** uma pesquisa pelos acontecimentos marcantes do último mês (resultados, guidance, M&A, regulação, mudanças de gestão, contratos grandes) — a janela de 7 a 30 dias vem quase sempre vazia da recolha;
+   - se a ação não é dos EUA, faz **sempre** uma pesquisa na língua do mercado (chinês, coreano, japonês, alemão…), com as fontes locais abaixo;
+   - faz mais uma pesquisa por cada lacuna em `gaps` que continue por preencher (ex.: nada nas últimas 24 h).
+   Entram em `web_items` só notícias que não estão na recolha. Usa WebFetch para confirmar a data de publicação das que tiverem relevância 4 ou 5 (no máximo 3 páginas); nas outras, `time_confirmed: false`. Lança as pesquisas todas de uma vez, no mesmo passo.
 
 ## Relevância (1–5)
 - 5: resultados, guidance, M&A, ação regulatória, suspensão, saída do CEO — move o preço
