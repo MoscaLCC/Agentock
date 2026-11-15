@@ -5,6 +5,16 @@
 
 Acerto ("hit"), sobre o retorno em excesso a 30 dias face ao índice do mercado:
   buy/strong_buy → excesso > 0 · sell/strong_sell → excesso < 0 · hold → |excesso| ≤ 3 p.p.
+
+Regras de medição (Fase 10, auditoria B16):
+- a base da ação e a do índice são o fecho do MESMO dia (o da análise, ou a sessão seguinte se foi fora de horas);
+  antes a ação partia do preço intradiário gravado e o índice do fecho, e um split posterior estragava o retorno
+  (as barras vêm ajustadas a splits; o preço gravado não);
+- sem retorno do índice não há excesso: a classificação fica fora das estatísticas (antes contava excesso = retorno);
+- uma classificação por ação, dia e versão (a última): repetir uma análise não multiplica observações;
+- o acerto direcional (compras e vendas) é mostrado à parte dos "manter", que têm um critério diferente;
+- grupos com menos de 10 observações são marcados como insuficientes; a calibração compara a confiança média
+  de cada escalão com o acerto observado.
 """
 import json
 import statistics
@@ -19,6 +29,7 @@ from core.util import BENCHMARK
 
 HORIZONS = {"1d": 1, "7d": 7, "30d": 30}
 HOLD_BAND = 3.0
+MIN_GROUP = 10   # observações mínimas para um grupo dizer alguma coisa
 REPORTS = Path(__file__).resolve().parent.parent / "data" / "reports"
 TEMPLATE = Path(__file__).resolve().parent.parent / "agents" / "eval_agent" / "templates" / "report.md"
 
@@ -41,7 +52,14 @@ def close_on_or_before(bars: list[dict], d: date):
 
 
 def returns_for(bars: list[dict], start: date, base_price: float | None, today: date) -> dict:
-    base = base_price or close_on_or_before(bars, start)[0]
+    """Retornos a 1/7/30 dias de calendário a partir do fecho do dia `start` (ou da sessão seguinte).
+    `base_price` só é usado se não houver barra nesse dia (dados em falta).
+    """
+    close0, day0 = close_on_or_after(bars, start)
+    if close0 and day0 and date.fromisoformat(day0[:10]) - start <= timedelta(days=5):
+        base, start = close0, date.fromisoformat(day0[:10])
+    else:
+        base = base_price or close_on_or_before(bars, start)[0]
     out = {}
     for k, h in HORIZONS.items():
         target = start + timedelta(days=h)
@@ -119,16 +137,26 @@ def _bucket(rows, key):
 
 def _stats(rows) -> dict:
     ex = [r["excess"] for r in rows]
-    return {"n": len(rows), "hit_rate": round(sum(r["hit"] for r in rows) / len(rows), 3) if rows else None,
+    return {"n": len(rows), "enough": len(rows) >= MIN_GROUP,
+            "hit_rate": round(sum(r["hit"] for r in rows) / len(rows), 3) if rows else None,
+            "avg_confidence": round(statistics.mean(r["confidence"] for r in rows), 3) if rows else None,
             "avg_ret_30d": round(statistics.mean(r["ret_30d"] for r in rows), 2) if rows else None,
             "avg_excess_30d": round(statistics.mean(ex), 2) if ex else None}
 
 
 def build_report(conn=None) -> dict:
     conn = conn or db.connect()
-    rows = []
-    for r in conn.execute("SELECT * FROM runs WHERE ret_30d IS NOT NULL").fetchall():
-        excess = r["ret_30d"] - (r["bench_30d"] or 0)
+    rows, seen, no_bench, repeated = [], set(), 0, 0
+    for r in conn.execute("SELECT * FROM runs WHERE ret_30d IS NOT NULL ORDER BY id DESC").fetchall():
+        key = (r["ticker"], (r["ts"] or "")[:10], r["version"] or "v1")
+        if key in seen:           # a mesma ação analisada várias vezes no mesmo dia conta uma vez (a última)
+            repeated += 1
+            continue
+        seen.add(key)
+        if r["bench_30d"] is None:  # sem índice não há excesso: fora das estatísticas
+            no_bench += 1
+            continue
+        excess = r["ret_30d"] - r["bench_30d"]
         rows.append({"rating": r["rating"], "confidence": r["confidence"] or 0, "market": r["market"] or "?",
                      "version": r["version"] or "v1", "ret_30d": r["ret_30d"], "excess": excess,
                      "hit": hit(r["rating"], excess)})
@@ -145,6 +173,8 @@ def build_report(conn=None) -> dict:
     return {
         "generated": date.today().isoformat(), "ratings_total": total, "evaluated_30d": len(rows),
         "enough_data": len(rows) >= 30, "overall": _stats(rows), "rating_vs_excess_corr": corr,
+        "directional": _stats([r for r in rows if r["rating"] != 0]),   # compras e vendas, sem os "manter"
+        "excluded": {"sem_indice": no_bench, "repetidas_no_dia": repeated},
         "by_rating": {Rating(k).label: _stats(v) for k, v in sorted(_bucket(rows, lambda r: r["rating"]).items())},
         "by_confidence": {k: _stats(v) for k, v in _bucket(rows, conf).items()},
         "by_market": {k: _stats(v) for k, v in _bucket(rows, lambda r: r["market"]).items()},
@@ -156,10 +186,12 @@ def build_report(conn=None) -> dict:
 def _md_table(groups: dict) -> str:
     if not groups:
         return "_sem dados_"
-    lines = ["| grupo | N | acerto | retorno 30d | excesso 30d |", "|---|---|---|---|---|"]
+    lines = ["| grupo | N | acerto | confiança média | retorno 30d | excesso 30d |", "|---|---|---|---|---|---|"]
     for k, s in groups.items():
         hr = f"{s['hit_rate']:.0%}" if s["hit_rate"] is not None else "—"
-        lines.append(f"| {k} | {s['n']} | {hr} | {s['avg_ret_30d']} | {s['avg_excess_30d']} |")
+        cf = f"{s['avg_confidence']:.0%}" if s.get("avg_confidence") is not None else "—"
+        few = "" if s.get("enough", True) else " (N insuficiente)"
+        lines.append(f"| {k}{few} | {s['n']} | {hr} | {cf} | {s['avg_ret_30d']} | {s['avg_excess_30d']} |")
     return "\n".join(lines)
 
 
@@ -171,7 +203,10 @@ def report_text(rep: dict) -> str:
                           f"dia 180 {i['ret_day180']}%" for i in rep["ipos"]) or "_sem IPOs avaliados_"
     text = tpl.safe_substitute(
         generated=rep["generated"], total=rep["ratings_total"], evaluated=rep["evaluated_30d"], warning=warn,
-        overall=_md_table({"todas": rep["overall"]} if rep["overall"]["n"] else {}), corr=rep["rating_vs_excess_corr"],
+        overall=_md_table({"todas": rep["overall"], "só compras e vendas": rep["directional"]}
+                          if rep["overall"]["n"] else {}), corr=rep["rating_vs_excess_corr"],
+        excluded=(f"Fora das estatísticas: {rep['excluded']['sem_indice']} sem retorno do índice, "
+                  f"{rep['excluded']['repetidas_no_dia']} repetidas no mesmo dia."),
         by_rating=_md_table(rep["by_rating"]), by_confidence=_md_table(rep["by_confidence"]),
         by_market=_md_table(rep["by_market"]), by_version=_md_table(rep["by_version"]), ipos=ipo_lines,
         hold_band=HOLD_BAND)

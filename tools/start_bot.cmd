@@ -1,6 +1,5 @@
 @echo off
-rem Arranca o bot do Agentock sem janela, com registo em data\logs\bot.log.
-rem Usado pela tarefa agendada (tools\install_bot_task.ps1) ou à mão (duplo clique).
+rem Arranca o supervisor do bot do Agentock numa janela minimizada (ver tools\run_bot.cmd).
+rem Para ficar sempre ligado, mesmo depois de reiniciar o PC: tools\install_bot_task.ps1
 cd /d "%~dp0.."
-if not exist data\logs mkdir data\logs
-start "" /b pythonw -u tools\telegram_bot.py >> data\logs\bot.log 2>&1
+start "Agentock bot" /min cmd /c tools\run_bot.cmd

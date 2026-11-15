@@ -439,6 +439,36 @@ class SchedulerTests(BotCase):
         self.assertEqual(jobs.setting(self.conn, "daily_summary"), "off")
 
 
+class WatchdogTests(unittest.TestCase):
+    def setUp(self):
+        from tools import bot_watchdog
+        self.wd = bot_watchdog
+        self.conn = db.connect(":memory:")
+        self.now = datetime(2026, 11, 15, 12, 0, tzinfo=timezone.utc)
+        self.killed = []
+
+    def check(self, alive):
+        return self.wd.check(self.conn, self.now, is_alive=lambda pid: alive, do_kill=self.killed.append)
+
+    def test_never_started_or_recent_heartbeat_is_ok(self):
+        self.assertEqual(self.check(False)["action"], "ok")
+        jobs.kv_set(self.conn, "last_heartbeat", (self.now - timedelta(minutes=2)).isoformat())
+        self.assertEqual(self.check(True)["action"], "ok")
+        self.assertEqual(self.killed, [])
+
+    def test_hung_process_is_killed_and_reported_once(self):
+        jobs.kv_set(self.conn, "last_heartbeat", (self.now - timedelta(minutes=20)).isoformat())
+        jobs.kv_set(self.conn, "pid", 4321)
+        first = self.check(True)
+        self.assertEqual((first["action"], first["notify"], self.killed), ("killed", True, [4321]))
+        self.assertFalse(self.check(True)["notify"])                # mesmo incidente: não repete o aviso
+
+    def test_stopped_bot_without_supervisor_is_reported(self):
+        jobs.kv_set(self.conn, "last_heartbeat", (self.now - timedelta(hours=3)).isoformat())
+        out = self.check(False)
+        self.assertEqual((out["action"], out["notify"], self.killed), ("down", True, []))
+
+
 class ProgressTests(unittest.TestCase):
     def test_text_and_eta(self):
         clock = [0.0]
