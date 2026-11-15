@@ -148,3 +148,27 @@ No bot, os nós falhados aparecem só como "Sem resultado nesta análise: asia_l
 | Falhas silenciosas | 2 tipos conhecidos | 0 | cada falha chega ao utilizador com motivo e consequência |
 | Qualidade | AAPL hold; 005930.KS compra; guard 0 por verificar | igual nos 3 tickers de referência | A/B com o mesmo dossier antes de aceitar cada corte |
 | Tarefas perdidas num reinício | todas | 0 | fila persistente + retoma |
+
+## 11. Resultado (depois da Fase 10, 2026-11-15)
+
+Três análises reais com o fluxo novo, a frio (`--no-cache`), mais uma reanálise. `python tools/measure.py` mostra-as
+ao lado das do baseline (a coluna "Ideal (DAG)" das execuções antigas deixou de ser comparável: o fluxo mudou).
+
+| Execução | Custo USD | Tempo real | Tokens | Turnos | Classificação | Guard |
+|---|---|---|---|---|---|---|
+| AAPL 09:08 (fria) | 0,62 | 75 s | 245 mil | 42 | hold 0,60 (baseline: hold 0,60) | 19 números, 0 por confirmar |
+| 9988.HK 19:10 (fria) | 0,61 | 71 s | 225 mil | 45 | hold 0,50 (baseline v1: hold 0,40) | 20 números; 1 falso positivo ("90 dias"), já corrigido |
+| 005930.KS 09:10 + 13:57 (fria, interrompida pelo limite de utilização e retomada) | 0,60 | — | 230 mil | 45 | — | — |
+| 005930.KS 19:07 (dossier completo) | 0,42 | 151 s (100 s são a DART) | 118 mil | 14 | compra 0,55 (baseline: compra 0,55) | 24 números, 23 no campo de origem |
+| AAPL 19:13 (reanálise, 10 h depois) | 0,44 | 76 s | 139 mil | 16 | hold | — |
+
+| Métrica | Baseline | Meta | Obtido |
+|---|---|---|---|
+| Tokens por análise fria | 1,92 M | ≤ 0,75 M | **0,23 M (−88%)** |
+| Custo equivalente | 2,50 USD | ≤ 1,10 USD | **0,61 USD (−76%)** |
+| Tempo real | 211 s | ≤ 140 s | **73 s (−65%)** nos EUA e HK; 151 s na Coreia com a DART fria |
+| Reanálise no mesmo dia | 130 s · 1,72 USD | ≤ 60 s · ≤ 0,60 USD | 76 s · 0,44 USD — custo cumprido, tempo não (as notícias tinham expirado e a cadeia notícias → cenários → debate → juiz são ~70 s) |
+| Qualidade | 3 classificações de referência | iguais | iguais (AAPL hold, 005930.KS compra, 9988.HK hold) |
+
+Onde ficou o custo de uma análise fria (AAPL): notícias 0,11 · juiz 0,12 · bull + bear 0,08 · relações 0,07 ·
+quotas 0,07 · cenários 0,06 · timing 0,06 · concorrentes 0,05 · fundamental 0,02 · técnica 0,002 USD.
