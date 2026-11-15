@@ -28,7 +28,7 @@ from .spec import AgentSpec, load_agent
 @dataclass
 class AgentResult:
     agent: str
-    status: str  # ok | failed | skipped
+    status: str  # ok | failed | skipped (falta um input) | off (desligado por `when`) | cancelled
     output: object = None
     error: str | None = None
     cached: bool = False
@@ -199,8 +199,10 @@ async def _run_llm(spec: AgentSpec, inputs: dict, ctx: dict):
 
 # ---------------------------------------------------------------- API
 async def run_agent(name: str, inputs: dict | None = None, *, run_id: str | None = None, node: str | None = None,
-                    use_cache: bool = True, conn=None, agents_dir: Path | None = None, **kw_inputs) -> AgentResult:
-    """inputs: dict (preferível — nenhum nome de input colide com estes argumentos) ou **kw_inputs."""
+                    use_cache: bool = True, conn=None, agents_dir: Path | None = None, timeout: float | None = None,
+                    **kw_inputs) -> AgentResult:
+    """inputs: dict (preferível — nenhum nome de input colide com estes argumentos) ou **kw_inputs.
+    timeout: segundos de execução; nos agentes LLM só conta depois de haver vaga no semáforo."""
     inputs = {**(inputs or {}), **kw_inputs}
     conn = conn or db.connect()
     run_id = run_id or new_run_id(inputs.get("ticker"))
@@ -225,18 +227,22 @@ async def run_agent(name: str, inputs: dict | None = None, *, run_id: str | None
     else:
         try:
             if spec.kind == "script":
-                output, meta = await _run_script(spec, inputs), {}
+                output, meta = await asyncio.wait_for(_run_script(spec, inputs), timeout), {}
             else:
                 async with llm_slots():
-                    output, meta = await _run_llm(spec, inputs, {"run_id": run_id, "agent": spec.name})
+                    t0 = time.time()  # a espera pela vaga não conta para a duração nem para o timeout
+                    output, meta = await asyncio.wait_for(
+                        _run_llm(spec, inputs, {"run_id": run_id, "agent": spec.name}), timeout)
             res = AgentResult(spec.name, "ok", output, **meta)
             if key:
                 db.agent_cache_set(conn, key, spec.name, dumps(output), spec.cache_ttl)
+        except asyncio.TimeoutError:
+            res = AgentResult(spec.name, "failed", error=f"timeout ({timeout:g}s)")
         except AgentError as e:
             res = AgentResult(spec.name, "failed", error=str(e), **e.meta)
         except Exception as e:
             res = AgentResult(spec.name, "failed", error=f"{type(e).__name__}: {e}")
-    if res.duration_ms is None:
+    if not res.cached:  # tempo de relógio do nó (o do CLI exclui o arranque do processo: 2–3 s por sessão)
         res.duration_ms = int((time.time() - t0) * 1000)
     persist(conn, run_id, node, inputs.get("ticker"), res)
     return res
