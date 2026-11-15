@@ -165,7 +165,7 @@ def point_of(reason: str | None, n: int = 80) -> str:
     t = re.sub(r"\s+", " ", str(reason or "")).strip()
     m = re.match(r"^[^:.]{2,45}:\s+(.+)$", t)
     body = m.group(1) if m else t
-    first = re.split(r"(?<=[^\d])[.;](?=\s)|\s—\s", body, maxsplit=1)[0].strip()
+    first = re.split(r"[.;](?=\s)|\s—\s", body, maxsplit=1)[0].strip()   # "3,56. Mais" acaba em 3,56
     return shorten(first[:1].upper() + first[1:], n)
 
 

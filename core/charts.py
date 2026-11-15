@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.patches import FancyBboxPatch  # noqa: E402
 from matplotlib.ticker import FuncFormatter  # noqa: E402
 
-from .messages import MONTHS, date_pt, num_pt, price_pt, short_name, shorten, when_pt  # noqa: E402
+from .messages import MONTHS, date_pt, num_pt, pct_pt, price_pt, short_name, shorten, when_pt  # noqa: E402
 from .ratings import Rating  # noqa: E402
 
 THEMES = {
@@ -121,7 +121,7 @@ def stock_card(data: dict, bars: list[dict]) -> bytes:
     chg = prof.get("change_pct")
     sub = f"{run['ticker']} · {price_pt(run['price'])} {cur}" if run["price"] else run["ticker"]
     if chg is not None:
-        sub += f" ({'+' if chg >= 0 else ''}{num_pt(chg, 2)}%)"
+        sub += f" ({pct_pt(chg, 2)})"
     fig.text(0.05, _y(0.60), sub, fontsize=9, color=t["ink2"], va="center")
     fig.patches.append(FancyBboxPatch((0.66, _y(0.47)), 0.29, 0.33 / H_IN,
                                       boxstyle="round,pad=0.004,rounding_size=0.012", transform=fig.transFigure,
@@ -132,7 +132,7 @@ def stock_card(data: dict, bars: list[dict]) -> bytes:
              color=t["ink2"], ha="right", va="center")
 
     # ---------------------------------------------------------------- 1) preço 6 meses + médias + níveis
-    ax = fig.add_axes(_box(0.13, 1.15, 0.79, 2.05))
+    ax = fig.add_axes(_box(0.13, 1.15, 0.74, 2.05))   # margem à direita para o último preço não ser cortado
     _style_axis(ax, t)
     closes = [b["c"] for b in bars if b.get("c")]
     dates = [date.fromisoformat(b["t"][:10]) for b in bars if b.get("c")]
@@ -246,7 +246,7 @@ def stock_card(data: dict, bars: list[dict]) -> bytes:
         fig.text(0.31, _y(sc_top + sc_h) + frac * sc_h / H_IN, name, fontsize=8.5, color=t["ink2"], ha="right",
                  va="center")
         if v is None:
-            ax3.text(0, y, "sem dados", fontsize=7, color=t["muted"], ha="center", va="center")
+            ax3.text(0.08, y, "sem dados", fontsize=7, color=t["muted"], ha="left", va="center")  # ao lado do zero
             continue
         v = max(-2.0, min(2.0, v))
         ax3.barh(y, v, height=0.56, color=t["pos"] if v >= 0 else t["neg"], edgecolor="none")
@@ -272,7 +272,7 @@ def stock_card(data: dict, bars: list[dict]) -> bytes:
 
     cells = [("P/E (próx. 12m)", f(val.get("forward_pe"))), ("EV/EBITDA", f(val.get("ev_to_ebitda"))),
              ("Dividendo", f(val.get("dividend_yield_pct"), "%")), ("ROE", f(bal.get("roe_pct"), "%", 0)),
-             ("Potencial (alvo médio)", f(pt.get("upside_mean_pct"), "%")),
+             ("Potencial (alvo médio)", pct_pt(pt.get("upside_mean_pct")) or "—"),
              ("Volatilidade anual", f(ind.get("volatility_ann_pct"), "%", 0)),
              ("Analistas", f"{an.get('consensus_label') or '—'} ({an.get('n_analysts') or 0})"),
              ("Próximos resultados", date_pt(cal.get("next_earnings")) or "—")]

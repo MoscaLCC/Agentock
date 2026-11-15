@@ -93,7 +93,8 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
     if p == ":memory:" or p not in _READY:  # schema e migrações uma vez por processo e por base
         if p != ":memory:":
             conn.execute("PRAGMA journal_mode=WAL")   # leitores (bot) não bloqueiam o escritor (análise)
-        conn.executescript(SCHEMA + SCHEMA_EXTRA)
+        from . import jobs   # fila do bot, definições e lista de ações seguidas (mesma base)
+        conn.executescript(SCHEMA + SCHEMA_EXTRA + jobs.SCHEMA)
         _migrate(conn)
         _READY.add(p)
     conn.execute("PRAGMA synchronous=NORMAL")

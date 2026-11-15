@@ -11,6 +11,7 @@ import importlib.util
 import inspect
 import json
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -72,7 +73,9 @@ def dumps(x) -> str:
 
 def new_run_id(ticker: str | None = None) -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-    return f"{stamp}-{(ticker or 'run').replace('.', '_')}-{uuid.uuid4().hex[:6]}"
+    # o run_id dá nome a pastas e ficheiros: só letras, números, _ e - ("a:b", "a*b?" ou 300 caracteres davam OSError)
+    label = re.sub(r"[^A-Za-z0-9_-]", "_", str(ticker or "run"))[:24] or "run"
+    return f"{stamp}-{label}-{uuid.uuid4().hex[:6]}"
 
 
 def _path(inputs: dict, key: str):
