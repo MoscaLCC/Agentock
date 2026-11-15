@@ -70,6 +70,12 @@ class IsolatedSessionTests(unittest.TestCase):
         opts = _options(load_agent("b", self.dir), {}, {"run_id": "teste-sessao", "agent": "b"})
         self.assertEqual(opts.tools, [])
         self.assertEqual(opts.mcp_servers, {})
+        # um só pedido à API: escrever o prompt em cache custaria 2× e nunca seria lido
+        self.assertEqual(opts.env.get("DISABLE_PROMPT_CACHING"), "1")
+
+    def test_agents_with_tools_keep_prompt_caching_and_skip_session_title(self):
+        self.assertNotIn("DISABLE_PROMPT_CACHING", self.opts.env)        # vários pedidos: a cache compensa
+        self.assertEqual(self.opts.env.get("CLAUDE_CODE_DISABLE_TERMINAL_TITLE"), "1")  # sem chamada extra ao Haiku
 
     def test_real_agents_do_not_ask_to_load_skills(self):
         for prompt in AGENTS_DIR.rglob("prompt.md"):

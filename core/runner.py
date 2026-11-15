@@ -154,7 +154,7 @@ def _options(spec: AgentSpec, vars_: dict, ctx: dict, add_dirs: list[str] | None
         system_prompt=spec.system_prompt(vars_),
         tools=spec.builtin_tools, allowed_tools=spec.allowed_tools, skills=[],
         mcp_servers=mcp, strict_mcp_config=True, cwd=str(spec.asset_dir),
-        setting_sources=[], env={"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"},
+        setting_sources=[], env=spec.session_env,
         max_turns=spec.max_turns, model=spec.model, hooks=build_hooks(spec.hooks, ctx),
     )
     if spec.output_model:

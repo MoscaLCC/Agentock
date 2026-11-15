@@ -99,6 +99,22 @@ class AgentSpec:
                     out.append(f"### references/{ref.name}\n\n{ref.read_text(encoding='utf-8').strip()}")
         return "\n\n".join(out)
 
+    @property
+    def single_request(self) -> bool:
+        """Agente sem tools: a sessão faz um único pedido à API (lê o prompt, devolve o output estruturado)."""
+        return not (self.builtin_tools or self.market_tools or self.mcp_servers or self.subagents)
+
+    @property
+    def session_env(self) -> dict[str, str]:
+        """Variáveis do processo do agente (medido em 2026-11-15, ver docs/BASELINE.md e PLANO D24):
+        - sem memória do Claude Code do projeto no contexto;
+        - sem a chamada extra ao Haiku para dar título à sessão (levava o prompt inteiro);
+        - sem cache de prompt quando há um só pedido: a escrita em cache custa 2× o input e nunca é lida."""
+        env = {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "1"}
+        if self.single_request:
+            env["DISABLE_PROMPT_CACHING"] = "1"
+        return env
+
     def system_prompt(self, vars_: dict) -> str:
         """Prompt do agente com as variáveis substituídas + guias (estes não são template: podem ter '$')."""
         text = self.prompt_tpl.safe_substitute(vars_)
